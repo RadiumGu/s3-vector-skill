@@ -19,7 +19,7 @@
 | **索引管理** | 创建、查询、列出、删除向量索引 |
 | **向量数据操作** | 插入/更新、获取、列出、删除向量 |
 | **相似度搜索** | Top-K 语义搜索，支持元数据过滤 |
-| **Skill 路由（降本工具）** | 离线建库 + 在线路由 + Hook，Token 节省 **~91%** |
+| **Skill 路由（降本工具）** | 离线建库 + 在线路由 + Hook，整体 LLM 账单降低 **~36%** |
 
 > 📖 完整 CLI 命令参考 → [references/cli-reference.md](references/cli-reference.md)
 
@@ -114,9 +114,13 @@ git submodule add https://github.com/RadiumGu/s3-vector-skill .openclaw/skills/s
 
 ---
 
-## 🧭 Skill 路由（Token 降本 ~91%）
+## 🧭 Skill 路由（整体 LLM 账单降低 ~36%）
 
-> 将单轮对话 Skill 相关 Token 从 ~4867 降至 ~430（节省 **~91%**）。
+> ℹ️ **适用场景**：Router 在 Skill 数量 **30+** 时收益最大。少于此数，OpenClaw 全量注入即可，无需额外部署。
+>
+> 整体 LLM 账单降低 **~36%**（Skill 注入部分降低 ~91%，但 Skill 注入仅占总 Token 的一部分）。
+>
+> ⚠️ **当前限制**：节省仅发生在会话首轮（`agent:bootstrap` 阶段）。后续每条消息的 Token 消耗不受影响。待 OpenClaw 支持阻塞式 `message:received` 上下文注入后，可扩展为每轮生效。
 
 ### 原理
 

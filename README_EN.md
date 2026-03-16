@@ -19,7 +19,7 @@
 | **Index Management** | Create, query, list, delete vector indexes |
 | **Vector Data Operations** | Put/update, get, list, delete vectors |
 | **Similarity Search** | Top-K semantic search with metadata filtering |
-| **Skill Router (Cost Optimizer)** | Offline indexing + online routing + Hook, Token savings **~91%** |
+| **Skill Router (Cost Optimizer)** | Offline indexing + online routing + Hook, overall LLM bill reduction **~36%** |
 
 > 📖 Full CLI reference → [references/cli-reference.md](references/cli-reference.md)
 
@@ -114,9 +114,13 @@ After installation, use natural language in OpenClaw to trigger actions:
 
 ---
 
-## 🧭 Skill Router (Token Cost Reduction ~91%)
+## 🧭 Skill Router (Overall LLM Bill Reduction ~36%)
 
-> Reduces Skill-related Token consumption per turn from ~4,867 to ~430 (saving **~91%**).
+> ℹ️ **When to use**: The Router is most useful with **30+ Skills**. Below that, OpenClaw's full injection works fine — no extra setup needed.
+>
+> Overall LLM bill reduction of **~36%** (Skill injection portion drops ~91%, but Skill injection is only part of the total Token spend).
+>
+> ⚠️ **Current limitation**: Savings only apply to the first turn of a session (`agent:bootstrap` phase). Subsequent messages are unaffected. Once OpenClaw supports blocking `message:received` context injection, this can extend to every turn.
 
 ### How It Works
 
