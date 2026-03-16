@@ -1,7 +1,9 @@
 # Amazon S3 向量桶全功能管理 Skill
 
 > Amazon S3 Vectors 全功能管理 OpenClaw Skill，覆盖向量桶、索引、向量数据的全生命周期管理，共 **16 个核心能力**。
+>
 > 基于 Amazon S3 Vectors（re:Invent 2025 GA），比传统向量数据库降低 **90%** 成本。
+>
 > 集成 OpenClaw Skill 路由后，每轮 Skill 相关 Token 消耗降低 **~90%**，整体 LLM 使用成本降低 **~36%**（基于东京 Region 实测）。
 
 ---
