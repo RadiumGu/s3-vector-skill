@@ -208,18 +208,25 @@ Routing infrastructure cost (S3 storage + Embedding) < $0.001/month — negligib
 #### Step 1: Build Index
 
 ```bash
-# Auto-scan all OpenClaw Skill directories
+# Auto-scan all OpenClaw Skill directories (incremental: only embeds changed Skills)
 python3 scripts/build_skill_index.py \
   --bucket my-skill-router \
   --index  skills-v1 \
   --sync
 
-# Multi-agent parallel build (~2 minutes)
+# Multi-agent parallel build (auto-scans all workspace-* directories)
 SKILL_ROUTER_BUCKET=my-skill-router ./scripts/build_all.sh
+
+# Force full rebuild (skip incremental comparison)
+python3 scripts/build_skill_index.py --bucket my-skill-router --index skills-v1 --sync --force
 
 # Dry run (preview only, no write)
 python3 scripts/build_skill_index.py --bucket x --index x --dry-run
 ```
+
+> 💡 **Incremental builds**: By default, compares description hashes and only re-embeds changed/new Skills.
+> Combined with disk cache (`~/.cache/s3-vector-skill/`), routine maintenance Bedrock calls drop by 90%+,
+> build time goes from minutes to seconds.
 
 **`build_skill_index.py` parameters:**
 
@@ -231,6 +238,7 @@ python3 scripts/build_skill_index.py --bucket x --index x --dry-run
 | `--region` | ❌ | `ap-northeast-1` | S3 Vectors Region |
 | `--embed-region` | ❌ | same as `--region` | Bedrock Embedding Region |
 | `--sync` | ❌ | false | Sync mode: auto-delete stale Skill vectors |
+| `--force` | ❌ | false | Force full rebuild (skip incremental comparison) |
 | `--dry-run` | ❌ | false | Scan only, no write |
 
 #### Step 2: Online Query
@@ -260,7 +268,7 @@ python3 scripts/skill_router.py \
 | `--query` | ✅ | — | User query text |
 | `--top-k` | ❌ | `5` | Number of top results |
 | `--output` | ❌ | `json` | Output format: `json` / `markdown` / `names` |
-| `--score-threshold` | ❌ | `0` | Similarity score filter threshold (0~1) |
+| `--score-threshold` | ❌ | `0.3` | Similarity score filter threshold (0~1, skips filter when API returns no score) |
 | `--embed-region` | ❌ | same as `--region` | Bedrock Embedding Region |
 
 #### Step 3: Install Hook
@@ -290,6 +298,7 @@ openclaw hooks enable skill-router-hook
 | `SKILL_ROUTER_INDEX` | Single agent | Fixed index name; PREFIX takes priority |
 | `SKILL_ROUTER_TOP_K` | ❌ | Top-K count (default 5) |
 | `SKILL_ROUTER_REGION` | ❌ | S3 Vectors Region (default ap-northeast-1) |
+| `SKILL_ROUTER_SCRIPT` | ❌ | Path to skill_router.py (auto-injected by install.sh; specify manually otherwise) |
 | `AWS_BEDROCK_REGION` | ❌ | Bedrock Embedding Region |
 
 ### Current Limitations & Roadmap
@@ -310,9 +319,9 @@ openclaw hooks enable skill-router-hook
 
 | Scenario | Action |
 |----------|--------|
-| Install / update / uninstall Skill | Rebuild index (use `--sync` for uninstall) |
+| Install / update / uninstall Skill | Rebuild index (incremental, only processes changed Skills; use `--sync` for uninstall) |
 | OpenClaw upgrade | Rebuild index |
-| Modify SKILL.md name or description | Rebuild index |
+| Modify SKILL.md name or description | Rebuild index (incremental, only re-embeds changed Skills) |
 | Routine conversation / config changes | No action needed |
 
 ```bash
@@ -332,6 +341,7 @@ s3-vector-skill/
 ├── README.md                              # Documentation in Chinese
 ├── README_EN.md                           # Documentation in English (this file)
 ├── SKILL.md                               # OpenClaw Skill definition
+├── OPTIMIZATION.md                        # Optimization changelog
 ├── install.sh                             # One-click deployment script
 ├── scripts/                               # Executable scripts
 │   ├── common.py                          # Shared utilities
