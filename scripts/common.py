@@ -61,10 +61,17 @@ def create_client(args):
 
 
 def success_output(data):
-    """输出成功结果的 JSON"""
+    """输出成功结果的 JSON（自动处理 datetime 序列化）"""
     result = {"success": True}
     result.update(data)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=_json_default))
+
+
+def _json_default(obj):
+    """JSON 序列化 fallback：处理 datetime 等非标准类型"""
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 def fail(message):
