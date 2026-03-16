@@ -96,7 +96,7 @@ def main():
 
     # 3. 过滤低分结果
     if args.score_threshold > 0:
-        results = [r for r in results if r.get("score", 0) >= args.score_threshold]
+        results = [r for r in results if r.get("distance", 0) >= args.score_threshold]
 
     # 4. 格式化输出
     if args.output == "names":
@@ -112,7 +112,7 @@ def main():
             meta = r.get("metadata", {})
             name = r["key"]
             desc = meta.get("description", "")
-            score = r.get("score", 0)
+            score = r.get("distance", 0)
             lines.append(f"  <skill>")
             lines.append(f"    <name>{name}</name>")
             lines.append(f"    <description>{desc}</description>")
@@ -134,7 +134,7 @@ def main():
                 {
                     "rank": i + 1,
                     "name": r["key"],
-                    "score": round(r.get("score", 0), 6),
+                    "score": round(r.get("distance", 0), 6),
                     "description": r.get("metadata", {}).get("description", ""),
                 }
                 for i, r in enumerate(results)

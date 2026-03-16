@@ -522,7 +522,7 @@ S3 Vectors 已在主要 Region 正式 GA（re:Invent 2025）：
 - [Amazon Bedrock Titan Embeddings v2](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)
 - [re:Invent 2025 STG318 Session](https://www.youtube.com/watch?v=ghUW2SpEYPk)
 - [OpenClaw 官网](https://openclaw.ai/)
-- [ClawHub Skill 市场](https://clawhub.ai/)
+- [ClawHub Skill 市场](https://clawhub.com/)
 
 ---
 
