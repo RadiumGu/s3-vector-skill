@@ -340,7 +340,6 @@ s3-vector-skill/
 ├── README.md                              # 使用文档（本文件）
 ├── README_EN.md                           # 英文文档
 ├── SKILL.md                               # OpenClaw Skill 定义文件
-├── OPTIMIZATION.md                        # 优化记录
 ├── install.sh                             # 一键部署脚本
 ├── scripts/                               # 可执行脚本目录
 │   ├── common.py                          # 公共模块

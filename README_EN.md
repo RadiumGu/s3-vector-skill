@@ -341,7 +341,6 @@ s3-vector-skill/
 ├── README.md                              # Documentation in Chinese
 ├── README_EN.md                           # Documentation in English (this file)
 ├── SKILL.md                               # OpenClaw Skill definition
-├── OPTIMIZATION.md                        # Optimization changelog
 ├── install.sh                             # One-click deployment script
 ├── scripts/                               # Executable scripts
 │   ├── common.py                          # Shared utilities
