@@ -102,9 +102,9 @@ def main():
             return r["score"]
         return None
 
-    # 3. 过滤低分结果（仅在 API 返回相似度字段时生效）
+    # 3. 过滤低分结果（仅在 API 返回相似度字段时生效；score=None 表示 API 未返回分数，不过滤）
     if args.score_threshold > 0:
-        results = [r for r in results if (get_score(r) or 0) >= args.score_threshold]
+        results = [r for r in results if get_score(r) is None or get_score(r) >= args.score_threshold]
 
     # 4. 格式化输出
     if args.output == "names":
