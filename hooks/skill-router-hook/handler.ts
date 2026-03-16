@@ -54,6 +54,7 @@ const handler: HookHandler = async (event) => {
       "--region", region,
       "--top-k",  String(topK),
       "--output", "markdown",
+      "--score-threshold", process.env.SKILL_ROUTER_SCORE_THRESHOLD ?? "0.3",
       "--query",  context.slice(0, 500),   // query 通过参数传，长度已限制
     ], {
       timeout: 15000,
@@ -91,7 +92,7 @@ const handler: HookHandler = async (event) => {
   }
 };
 
-/** 查找 skill_router.py 路径 */
+/** 查找 skill_router.py 路径（优先环境变量，其次相对路径推断）*/
 function resolveScript(): string | null {
   const envPath = process.env.SKILL_ROUTER_SCRIPT;
   if (envPath && existsSync(envPath)) return envPath;
@@ -99,7 +100,6 @@ function resolveScript(): string | null {
   const candidates = [
     // 相对于 hook 文件的位置推断
     join(__dirname, "../../scripts/skill_router.py"),
-    join(process.env.HOME ?? "", "tech/s3-vector-skill/scripts/skill_router.py"),
   ];
 
   for (const c of candidates) {
@@ -108,7 +108,7 @@ function resolveScript(): string | null {
   return null;
 }
 
-/** 读取近期 2 天 memory 文件，提取最后 500 字 */
+/** 读取近期 2 天 memory 文件，优先提取标题和近期段落 (#4) */
 function extractRecentContext(workspaceDir: string): string {
   const memoryDir = join(workspaceDir, "memory");
   if (!existsSync(memoryDir)) return "";
@@ -131,9 +131,22 @@ function extractRecentContext(workspaceDir: string): string {
     }
   }
 
+  if (lines.length === 0) return "";
   const combined = lines.join("\n");
-  // 取最后 500 个字符作为上下文摘要
-  return combined.slice(-500).trim();
+
+  // 提取标题行（结构性信息密度最高）
+  const headings = combined.split("\n")
+    .filter(l => l.startsWith("## ") || l.startsWith("### "))
+    .map(l => l.trim());
+
+  // 提取最近 3 个非空段落
+  const paragraphs = combined.split(/\n{2,}/)
+    .filter(p => p.trim().length > 20)
+    .slice(-3)
+    .map(p => p.trim());
+
+  // 标题优先 + 近期段落，截断到 500 字
+  return [...headings, ...paragraphs].join("\n").slice(-500).trim();
 }
 
 /** 简单 shell 转义（保留，用于日志输出）*/

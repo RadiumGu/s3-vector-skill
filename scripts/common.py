@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
 """
-公共基础模块 — 所有 S3 向量桶脚本复用的客户端初始化和错误处理逻辑。
+公共基础模块 — 所有 S3 向量桶脚本复用的客户端初始化、错误处理和 Skill 扫描逻辑。
 """
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import sys
+
+
+# ── 默认 Skill 扫描目录 ──────────────────────────────────────────────
+DEFAULT_SKILL_DIRS = [
+    os.path.expanduser("~/.openclaw/workspace-general-tech/skills"),
+    os.path.expanduser("~/.openclaw/workspace/skills"),
+    os.path.expanduser("~/.nvm/versions/node/v22.22.0/lib/node_modules/openclaw/skills"),
+    os.path.expanduser("~/.openclaw/skills"),
+]
 
 
 def base_parser(description):
@@ -63,15 +74,22 @@ def fail(message):
 
 
 def handle_error(e):
-    """统一处理 AWS 异常"""
+    """统一处理 AWS 异常（含 ThrottlingException 提示）"""
     try:
         from botocore.exceptions import ClientError, BotoCoreError
         if isinstance(e, ClientError):
             err = e.response.get("Error", {})
+            error_code = err.get("Code", "Unknown")
+            message = err.get("Message", str(e))
+
+            # ThrottlingException 特殊提示 (#9)
+            if error_code in ("ThrottlingException", "Throttling", "TooManyRequestsException"):
+                message = f"请求被限流: {message}。建议：稍后重试或降低并发。"
+
             print(json.dumps({
                 "success": False,
-                "error": f"服务端错误: {err.get('Message', str(e))}",
-                "error_code": err.get("Code", "Unknown"),
+                "error": f"服务端错误: {message}",
+                "error_code": error_code,
                 "request_id": e.response.get("ResponseMetadata", {}).get("RequestId", "Unknown"),
             }, ensure_ascii=False, indent=2))
         elif isinstance(e, BotoCoreError):
@@ -91,3 +109,106 @@ def run(func):
         raise
     except Exception as e:
         handle_error(e)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Skill 扫描（共享逻辑，供 build_skill_index.py / benchmark.py 等复用）
+# ══════════════════════════════════════════════════════════════════════
+
+def parse_skill_md(path: str) -> dict | None:
+    """解析 SKILL.md，返回 {name, description, path}，失败返回 None"""
+    try:
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+    except OSError:
+        return None
+
+    # 提取 YAML frontmatter（--- ... ---）
+    m = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+    if not m:
+        return None
+
+    fm_text = m.group(1)
+
+    # 优先用 pyyaml（更健壮），fallback 到正则 (#6)
+    try:
+        import yaml
+        parsed = yaml.safe_load(fm_text)
+        if isinstance(parsed, dict):
+            name = str(parsed.get("name", "")).strip()
+            description = str(parsed.get("description", "")).strip()
+            if name and description:
+                return {"name": name, "description": description, "path": path}
+    except ImportError:
+        pass  # pyyaml 未安装，fallback
+    except Exception:
+        pass  # YAML 解析失败，fallback
+
+    # fallback: 正则解析
+    return _parse_skill_md_regex(fm_text, path)
+
+
+def _parse_skill_md_regex(fm: str, path: str) -> dict | None:
+    """正则 fallback 解析 SKILL.md frontmatter"""
+    name_match = re.search(r"^name:\s*(.+)$", fm, re.MULTILINE)
+    if not name_match:
+        return None
+    name = name_match.group(1).strip().strip('"\'')
+
+    desc_pos = re.search(r"^description:\s*", fm, re.MULTILINE)
+    if not desc_pos:
+        return None
+
+    rest = fm[desc_pos.end():]
+
+    if rest.startswith('"'):
+        desc_m = re.match(r'"(.*?)"', rest, re.DOTALL)
+        description = desc_m.group(1).strip() if desc_m else ""
+    elif rest.startswith("'"):
+        desc_m = re.match(r"'(.*?)'", rest, re.DOTALL)
+        description = desc_m.group(1).strip() if desc_m else ""
+    elif rest.startswith("|") or rest.startswith(">"):
+        lines = rest.split("\n")[1:]
+        block_lines = []
+        for line in lines:
+            if line and (line[0] == " " or line[0] == "\t"):
+                block_lines.append(line.strip())
+            elif line.strip() == "":
+                continue
+            else:
+                break
+        description = " ".join(block_lines)
+    else:
+        description = rest.split("\n")[0].strip().strip('"\'')
+
+    if not description:
+        return None
+
+    return {"name": name, "description": description, "path": path}
+
+
+def find_skills(skill_dirs: list[str] | None = None) -> list[dict]:
+    """递归扫描目录，收集所有有效 SKILL.md"""
+    dirs = skill_dirs or DEFAULT_SKILL_DIRS
+    skills = []
+    seen_names = set()
+
+    for base_dir in dirs:
+        base_dir = os.path.expanduser(base_dir)
+        if not os.path.isdir(base_dir):
+            continue
+        for root, subdirs, files in os.walk(base_dir):
+            subdirs[:] = [d for d in subdirs if not d.startswith(".") and d != "node_modules"]
+            if "SKILL.md" in files:
+                skill_path = os.path.join(root, "SKILL.md")
+                skill = parse_skill_md(skill_path)
+                if skill and skill["name"] not in seen_names:
+                    skills.append(skill)
+                    seen_names.add(skill["name"])
+
+    return skills
+
+
+def desc_hash(description: str) -> str:
+    """生成 description 的 MD5 hash，用于增量构建对比"""
+    return hashlib.md5(description.encode()).hexdigest()

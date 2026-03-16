@@ -1,6 +1,22 @@
 ---
 name: s3-vector-bucket
-description: "Amazon S3 向量桶全功能管理技能。覆盖向量桶、索引、向量数据的全生命周期管理，包括创建/删除/查询向量桶、创建/管理索引、插入/查询/搜索/删除向量数据、策略管理等 16 个核心能力。另含 Skill 路由子系统（build_skill_index.py + skill_router.py + skill-router-hook），通过 S3 Vectors 相似度搜索动态筛选 Top-K 最相关 Skill，将 Token 消耗降低约 91%。基于 Amazon S3 Vectors（re:Invent 2025 GA）+ Bedrock Titan Text Embeddings V2（1024d），比传统向量数据库降低约 90% 成本。Trigger phrases: vector bucket, vector index, vector search, skill router, skill routing, 向量桶, 向量索引, 向量搜索, 向量存储, 插入向量, 相似度搜索, S3 vector, S3 vectors, Skill 路由, Token 降本."
+description: "Amazon S3 向量桶全功能管理技能。覆盖向量桶、索引、向量数据的全生命周期（16 个核心 CRUD 能力）。含 Skill 路由子系统，通过 S3 Vectors 相似度搜索动态筛选 Top-K Skill，Token 降本约 91%。基于 S3 Vectors（re:Invent 2025 GA）+ Bedrock Titan v2（1024d），成本比传统向量 DB 低约 90%。"
+triggers:
+  - vector bucket
+  - vector index
+  - vector search
+  - skill router
+  - skill routing
+  - 向量桶
+  - 向量索引
+  - 向量搜索
+  - 向量存储
+  - 插入向量
+  - 相似度搜索
+  - S3 vector
+  - S3 vectors
+  - Skill 路由
+  - Token 降本
 ---
 
 # Amazon S3 向量桶全功能管理技能

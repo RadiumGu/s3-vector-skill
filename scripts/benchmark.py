@@ -25,6 +25,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from common import find_skills, DEFAULT_SKILL_DIRS
+
+
 # ── Token 计数（不依赖 tiktoken，~4 char/token for EN, ~2 for ZH）──────
 def count_tokens(text: str) -> int:
     # 中文字符约 1.5 char/token，英文约 4 char/token，混合取折中
@@ -32,47 +35,6 @@ def count_tokens(text: str) -> int:
     en = len(text) - zh
     return int(zh / 1.5 + en / 4)
 
-
-# ── SKILL.md 扫描（复用 build_skill_index.py 逻辑）────────────────────
-DEFAULT_SKILL_DIRS = [
-    os.path.expanduser("~/.openclaw/workspace-general-tech/skills"),
-    os.path.expanduser("~/.openclaw/workspace/skills"),
-    os.path.expanduser("~/.nvm/versions/node/v22.22.0/lib/node_modules/openclaw/skills"),
-]
-
-def parse_skill_md(path: str):
-    try:
-        content = open(path, encoding="utf-8").read()
-    except OSError:
-        return None
-    m = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if not m: return None
-    fm = m.group(1)
-    name_m = re.search(r"^name:\s*(.+)$", fm, re.MULTILINE)
-    if not name_m: return None
-    name = name_m.group(1).strip().strip('"\'')
-    desc_m = (re.search(r'^description:\s*"(.*?)"', fm, re.DOTALL | re.MULTILINE) or
-              re.search(r"^description:\s*'(.*?)'", fm, re.DOTALL | re.MULTILINE) or
-              re.search(r"^description:\s*(.+)$", fm, re.MULTILINE))
-    if not desc_m: return None
-    desc = desc_m.group(1).strip().strip('"\'')
-    return {"name": name, "description": desc}
-
-
-def load_skills(skill_dirs=None):
-    dirs = skill_dirs or DEFAULT_SKILL_DIRS
-    skills, seen = [], set()
-    for d in dirs:
-        d = os.path.expanduser(d)
-        if not os.path.isdir(d): continue
-        for root, subdirs, files in os.walk(d):
-            subdirs[:] = [x for x in subdirs if not x.startswith(".") and x != "node_modules"]
-            if "SKILL.md" in files:
-                s = parse_skill_md(os.path.join(root, "SKILL.md"))
-                if s and s["name"] not in seen:
-                    skills.append(s)
-                    seen.add(s["name"])
-    return skills
 
 
 # ── 本地 TF-IDF 路由（不需要 AWS，仅作备用 fallback）────────────────
@@ -210,7 +172,7 @@ def main():
 
     # 1. 加载所有 Skill
     print("加载 Skills...")
-    skills = load_skills(args.skills_dir)
+    skills = find_skills(args.skills_dir)
     print(f"  发现 {len(skills)} 个 Skill")
 
     # 2. 计算"路由前"基准 Token（全量注入所有 Skill 描述）

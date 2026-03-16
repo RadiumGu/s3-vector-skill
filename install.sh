@@ -225,6 +225,7 @@ ENV_VARS=(
   "SKILL_ROUTER_BUCKET=$BUCKET"
   "SKILL_ROUTER_INDEX_PREFIX=$INDEX_PREFIX"
   "SKILL_ROUTER_REGION=$REGION"
+  "SKILL_ROUTER_SCRIPT=$SCRIPT_DIR/scripts/skill_router.py"
 )
 # 只有 Embed Region 与 S3 Region 不同时才注入
 if [[ "$EMBED_REGION" != "$REGION" ]]; then

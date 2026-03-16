@@ -31,15 +31,21 @@ if [[ -z "$BUCKET" ]]; then
   exit 1
 fi
 
-# ── Agent 列表（id → workspace 路径）─────────────────────────────────
-declare -A AGENT_WORKSPACES=(
-  [main]="$OPENCLAW_DIR/workspace"
-  [invest]="$OPENCLAW_DIR/workspace-invest"
-  [daily]="$OPENCLAW_DIR/workspace-daily"
-  [mm-tech]="$OPENCLAW_DIR/workspace-mm-tech"
-  [general-tech]="$OPENCLAW_DIR/workspace-general-tech"
-  [doc-reviewer]="$OPENCLAW_DIR/workspace-doc-reviewer"
-)
+# ── Agent 列表（自动扫描 workspace-* 目录）───────────────────────────
+declare -A AGENT_WORKSPACES=()
+for ws in "$OPENCLAW_DIR"/workspace*; do
+  [[ -d "$ws" ]] || continue
+  dir_name="${ws##*/}"                     # workspace-general-tech
+  agent_id="${dir_name#workspace}"         # -general-tech
+  agent_id="${agent_id#-}"                 # general-tech
+  [[ -z "$agent_id" ]] && agent_id="main" # workspace → main
+  AGENT_WORKSPACES[$agent_id]="$ws"
+done
+
+if [[ ${#AGENT_WORKSPACES[@]} -eq 0 ]]; then
+  echo "❌ 未在 $OPENCLAW_DIR 下发现任何 workspace 目录"
+  exit 1
+fi
 
 echo "======================================================"
 echo "  S3 Vector Skill Router — 多 Agent 全量建库"

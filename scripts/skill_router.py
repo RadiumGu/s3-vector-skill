@@ -62,8 +62,8 @@ def main():
     parser.add_argument(
         "--score-threshold",
         type=float,
-        default=0.0,
-        help="相似度分数阈值（0~1，低于此分数的结果被过滤，默认不过滤）",
+        default=0.3,
+        help="相似度分数阈值（0~1，低于此分数的结果被过滤，默认 0.3）",
     )
     args = parser.parse_args()
 

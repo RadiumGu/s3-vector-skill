@@ -40,109 +40,13 @@ import re
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import base_parser, create_client, success_output, fail, run
-from embed import embed_texts, EMBED_DIMENSION
+from common import base_parser, create_client, success_output, fail, run, find_skills, desc_hash, DEFAULT_SKILL_DIRS
+from embed import embed_texts, embed_text, EMBED_DIMENSION
 
-# 默认扫描的 Skill 目录（优先级从高到低）
-DEFAULT_SKILL_DIRS = [
-    os.path.expanduser("~/.openclaw/workspace-general-tech/skills"),
-    os.path.expanduser("~/.openclaw/workspace/skills"),
-    os.path.expanduser("~/.nvm/versions/node/v22.22.0/lib/node_modules/openclaw/skills"),
-    os.path.expanduser("~/.openclaw/skills"),
-]
-
-INDEX_NAME_DEFAULT = "skills-v1"
 BATCH_SIZE = 100  # S3 Vectors PutVectors 单次上限 500，保守取 100
 
 
-def parse_skill_md(path: str) -> dict | None:
-    """解析 SKILL.md，返回 {name, description, path}，失败返回 None"""
-    try:
-        with open(path, encoding="utf-8") as f:
-            content = f.read()
-    except OSError:
-        return None
-
-    # 提取 YAML frontmatter（--- ... ---）
-    m = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if not m:
-        return None
-
-    fm = m.group(1)
-
-    # 提取 name
-    name_match = re.search(r"^name:\s*(.+)$", fm, re.MULTILINE)
-    if not name_match:
-        return None
-    name = name_match.group(1).strip().strip('"\'')
-
-    # 提取 description — 支持三种 YAML 格式：
-    # 1. 行内双引号: description: "text"
-    # 2. 行内单引号: description: 'text'
-    # 3. YAML 块标量 (| 或 >): description: |\n  line1\n  line2
-    # 4. 普通行内: description: text
-
-    # 找 description: 所在行的位置
-    desc_pos = re.search(r"^description:\s*", fm, re.MULTILINE)
-    if not desc_pos:
-        return None
-
-    rest = fm[desc_pos.end():]
-
-    if rest.startswith('"'):
-        # 双引号字符串（可能多行）
-        desc_m = re.match(r'"(.*?)"', rest, re.DOTALL)
-        description = desc_m.group(1).strip() if desc_m else ""
-    elif rest.startswith("'"):
-        # 单引号字符串
-        desc_m = re.match(r"'(.*?)'", rest, re.DOTALL)
-        description = desc_m.group(1).strip() if desc_m else ""
-    elif rest.startswith("|") or rest.startswith(">"):
-        # YAML 块标量：取后续缩进行，合并为一行
-        lines = rest.split("\n")[1:]  # 跳过 | 那行
-        block_lines = []
-        for line in lines:
-            if line and (line[0] == " " or line[0] == "\t"):
-                block_lines.append(line.strip())
-            elif line.strip() == "":
-                continue
-            else:
-                break  # 遇到非缩进行说明块结束
-        description = " ".join(block_lines)
-    else:
-        # 普通行内值
-        description = rest.split("\n")[0].strip().strip('"\'')
-
-    if not description:
-        return None
-
-    return {
-        "name": name,
-        "description": description,
-        "path": path,
-    }
-
-
-def find_skills(skill_dirs: list[str]) -> list[dict]:
-    """递归扫描目录，收集所有有效 SKILL.md"""
-    skills = []
-    seen_names = set()
-
-    for base_dir in skill_dirs:
-        base_dir = os.path.expanduser(base_dir)
-        if not os.path.isdir(base_dir):
-            continue
-        for root, dirs, files in os.walk(base_dir):
-            # 跳过隐藏目录和 node_modules
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
-            if "SKILL.md" in files:
-                skill_path = os.path.join(root, "SKILL.md")
-                skill = parse_skill_md(skill_path)
-                if skill and skill["name"] not in seen_names:
-                    skills.append(skill)
-                    seen_names.add(skill["name"])
-
-    return skills
+INDEX_NAME_DEFAULT = "skills-v1"
 
 
 def ensure_bucket(client, bucket: str, region: str):
@@ -285,6 +189,11 @@ def main():
         action="store_true",
         help="同步模式：写入后自动删除索引中已不存在的废弃 Skill 向量",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="强制全量重建（忽略增量对比，重新 embed 所有 Skill）",
+    )
     args = parser.parse_args()
 
     skill_dirs = args.skills_dir or DEFAULT_SKILL_DIRS
@@ -314,56 +223,102 @@ def main():
         })
         return
 
-    # 2. 生成 Embeddings
+    # 2. 初始化 S3 Vectors 客户端（提前，增量对比需要）
     print(f"\n{'='*60}")
-    print(f"Step 2: 生成 Embeddings（Titan v2, {EMBED_DIMENSION} 维，Region={args.embed_region or args.region}）")
-    print(f"{'='*60}")
-    texts = [f"{s['name']}: {s['description']}" for s in skills]
-
-    embed_region = args.embed_region or args.region
-    print(f"  正在为 {len(texts)} 个 Skill 生成向量（预计耗时 {len(texts)*0.5:.0f}s）...")
-    try:
-        vectors_data = embed_texts(texts, region=embed_region, profile=getattr(args, "profile", None))
-    except Exception as e:
-        fail(f"Embedding 生成失败: {e}")
-
-    print(f"  ✓ 向量生成完成（维度={len(vectors_data[0])}）")
-
-    # 3. 初始化 S3 Vectors 客户端
-    print(f"\n{'='*60}")
-    print("Step 3: 初始化 S3 Vectors 资源")
+    print("Step 2: 初始化 S3 Vectors 资源")
     print(f"{'='*60}")
     client = create_client(args)
     ensure_bucket(client, args.bucket, args.region)
     ensure_index(client, args.bucket, args.index)
 
-    # 4. 写入向量
+    # 3. 增量对比（#2）：只 embed 变化的 Skill
+    print(f"\n{'='*60}")
+    embed_region = args.embed_region or args.region
+    if args.force:
+        print(f"Step 3: 全量 Embedding（--force）（Titan v2, {EMBED_DIMENSION} 维，Region={embed_region}）")
+        print(f"{'='*60}")
+        changed_skills = skills
+        unchanged_skills = []
+    else:
+        print(f"Step 3: 增量对比 + Embedding（Titan v2, {EMBED_DIMENSION} 维，Region={embed_region}）")
+        print(f"{'='*60}")
+        # 获取索引中已有向量的 metadata（含 desc_hash）
+        existing_hashes = {}
+        try:
+            existing_keys = list_all_vector_keys(client, args.bucket, args.index)
+            if existing_keys:
+                # 分批 get_vectors 获取 metadata
+                key_list = sorted(existing_keys)
+                for start in range(0, len(key_list), BATCH_SIZE):
+                    batch = key_list[start: start + BATCH_SIZE]
+                    resp = client.get_vectors(
+                        vectorBucketName=args.bucket,
+                        indexName=args.index,
+                        keys=batch,
+                        returnMetadata=True,
+                    )
+                    for v in resp.get("vectors", []):
+                        meta = v.get("metadata", {})
+                        existing_hashes[v["key"]] = meta.get("desc_hash", "")
+        except Exception as e:
+            print(f"  ⚠️ 无法获取已有向量 metadata，回退全量构建: {e}")
+            existing_hashes = {}
+
+        # 对比 desc_hash
+        changed_skills = []
+        unchanged_skills = []
+        for s in skills:
+            current_hash = desc_hash(s["description"])
+            if s["name"] in existing_hashes and existing_hashes[s["name"]] == current_hash:
+                unchanged_skills.append(s)
+            else:
+                changed_skills.append(s)
+
+        print(f"  变化/新增: {len(changed_skills)} 个，未变化: {len(unchanged_skills)} 个")
+
+    if not changed_skills:
+        print(f"  ✓ 所有 Skill 均未变化，跳过 Embedding")
+    else:
+        print(f"  正在为 {len(changed_skills)} 个 Skill 生成向量（预计耗时 {len(changed_skills)*0.5:.0f}s）...")
+        texts = [f"{s['name']}: {s['description']}" for s in changed_skills]
+        try:
+            vectors_data = embed_texts(texts, region=embed_region, profile=getattr(args, "profile", None))
+        except Exception as e:
+            fail(f"Embedding 生成失败: {e}")
+        print(f"  ✓ 向量生成完成（维度={len(vectors_data[0])}）")
+
+    # 4. 写入向量（仅变化部分）
     print(f"\n{'='*60}")
     print("Step 4: 写入向量到 S3 Vectors")
     print(f"{'='*60}")
 
-    vectors = [
-        {
-            "key": skills[i]["name"],
-            "data": {"float32": vectors_data[i]},
-            "metadata": {
-                "name": skills[i]["name"],
-                "description": skills[i]["description"][:500],
-            },
-        }
-        for i in range(len(skills))
-    ]
+    if not changed_skills:
+        print(f"  ✓ 无需写入")
+        total_written = 0
+    else:
+        vectors = [
+            {
+                "key": changed_skills[i]["name"],
+                "data": {"float32": vectors_data[i]},
+                "metadata": {
+                    "name": changed_skills[i]["name"],
+                    "description": changed_skills[i]["description"][:500],
+                    "desc_hash": desc_hash(changed_skills[i]["description"]),
+                },
+            }
+            for i in range(len(changed_skills))
+        ]
 
-    total_written = 0
-    for start in range(0, len(vectors), BATCH_SIZE):
-        batch = vectors[start: start + BATCH_SIZE]
-        client.put_vectors(
-            vectorBucketName=args.bucket,
-            indexName=args.index,
-            vectors=batch,
-        )
-        total_written += len(batch)
-        print(f"  ✓ 已写入 {total_written}/{len(vectors)} 条向量")
+        total_written = 0
+        for start in range(0, len(vectors), BATCH_SIZE):
+            batch = vectors[start: start + BATCH_SIZE]
+            client.put_vectors(
+                vectorBucketName=args.bucket,
+                indexName=args.index,
+                vectors=batch,
+            )
+            total_written += len(batch)
+            print(f"  ✓ 已写入 {total_written}/{len(vectors)} 条向量")
 
     # 5. 同步模式：清理索引中已不存在的废弃 Skill 向量
     deleted_keys = []
@@ -383,7 +338,9 @@ def main():
         "index": args.index,
         "region": args.region,
         "embed_region": embed_region,
-        "skills_indexed": len(skills),
+        "skills_total": len(skills),
+        "skills_changed": len(changed_skills),
+        "skills_unchanged": len(unchanged_skills),
         "vector_dimension": EMBED_DIMENSION,
         "skills": [{"name": s["name"], "description": s["description"][:80]} for s in skills],
     }
