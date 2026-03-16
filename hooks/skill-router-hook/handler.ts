@@ -97,11 +97,9 @@ function resolveScript(): string | null {
   if (envPath && existsSync(envPath)) return envPath;
 
   const candidates = [
-    // 相对于 hook 文件的位置推断（hook 在 hooks/skill-router-hook/，脚本在 scripts/）
+    // 相对于 hook 文件的位置推断
     join(__dirname, "../../scripts/skill_router.py"),
-    // OpenClaw workspace skills 目录下的标准安装路径
-    join(process.env.HOME ?? "", ".openclaw/workspace/skills/s3-vector-bucket/scripts/skill_router.py"),
-    join(process.env.HOME ?? "", ".openclaw/skills/s3-vector-bucket/scripts/skill_router.py"),
+    join(process.env.HOME ?? "", "tech/s3-vector-skill/scripts/skill_router.py"),
   ];
 
   for (const c of candidates) {

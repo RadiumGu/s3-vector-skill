@@ -32,48 +32,6 @@
 
 ## 🚀 快速开始
 
-### 一键部署（推荐）
-
-```bash
-# 交互式安装（逐步提示桶名等参数）
-./install.sh
-
-# 非交互式（全自动）
-./install.sh --bucket my-skill-router --yes
-
-# 指定参数
-./install.sh \
-  --bucket my-skill-router \
-  --prefix skills \
-  --region ap-northeast-1 \
-  --yes
-```
-
-`install.sh` 会自动完成以下 5 步：
-
-| 步骤 | 内容 |
-|------|------|
-| 1. 前置检查 | python3、boto3、AWS 凭证、S3 Vectors 可用性、Titan V2 可用性、openclaw CLI |
-| 2. 建库 | 扫描所有 Skill → Bedrock Embedding → 写入 S3 Vectors（含 `--sync` 清理废弃向量） |
-| 3. 安装 Hook | 复制 `skill-router-hook` 到 `~/.openclaw/hooks/` 并启用 |
-| 4. 注入环境变量 | 自动检测平台：Linux 用 systemd override，macOS 用 launchd plist |
-| 5. 重启 Gateway | 使环境变量和 Hook 生效 |
-
-**`install.sh` 参数：**
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--bucket` | （交互提示） | S3 向量桶名称 |
-| `--prefix` | `skills` | 索引前缀 |
-| `--region` | `ap-northeast-1` | S3 Vectors Region |
-| `--embed-region` | 同 `--region` | Bedrock Region（若不同 Region 可指定） |
-| `--yes` / `-y` | false | 跳过确认提示 |
-| `--skip-build` | false | 跳过建库（已有索引时使用） |
-
-### 手动安装（了解细节）
-
-如果需要分步执行或自定义流程：
-
 ### 前置条件
 
 - Python 3.8+
@@ -346,13 +304,7 @@ python3 scripts/query_vectors.py \
 
 ### 安装方式
 
-#### 方式 1：通过 ClawHub 一键安装（推荐）
-
-```bash
-clawhub install <slug>/s3-vector-bucket
-```
-
-#### 方式 2：手动安装到 OpenClaw Skill 目录
+#### 方式 1：手动安装到 OpenClaw Skill 目录
 
 ```bash
 # 复制到 OpenClaw workspace skills 目录
@@ -360,7 +312,7 @@ cp -r /home/ubuntu/tech/s3-vector-skill \
   ~/.openclaw/workspace-general-tech/skills/s3-vector-bucket
 ```
 
-#### 方式 3：Git 子模块（团队协作推荐）
+#### 方式 2：Git 子模块（团队协作推荐）
 
 ```bash
 git submodule add <repo-url> .openclaw/skills/s3-vector-bucket
@@ -394,7 +346,6 @@ git commit -m "feat: 添加 S3 向量桶 skill"
 s3-vector-skill/
 ├── README.md                              # 使用文档（本文件）
 ├── SKILL.md                               # OpenClaw Skill 定义文件
-├── install.sh                             # 一键部署脚本（推荐入口）
 ├── scripts/                               # 可执行脚本目录
 │   ├── common.py                          # 公共模块（boto3 客户端、错误处理）
 │   ├── create_vector_bucket.py            # 创建向量桶
@@ -656,57 +607,6 @@ openclaw hooks enable skill-router-hook
 | `SKILL_ROUTER_TOP_K` | ❌ | Top-K 数量（默认 5） |
 | `SKILL_ROUTER_REGION` | ❌ | S3 Vectors Region（默认 ap-northeast-1） |
 | `AWS_BEDROCK_REGION` | ❌ | Bedrock Embedding Region（默认跟 `SKILL_ROUTER_REGION` 一致；若该 region 无 Titan v2 可手动设置） |
-
-#### 环境变量注入方式（重要）
-
-Hook 由 OpenClaw Gateway 进程执行，环境变量必须对 Gateway 进程可见。`~/.bashrc` 里的 `export` 对 systemd 管理的 Gateway 无效。
-
-**Linux（systemd user service）— 推荐**
-
-```bash
-# 创建 systemd override 文件
-mkdir -p ~/.config/systemd/user/openclaw-gateway.service.d
-
-cat > ~/.config/systemd/user/openclaw-gateway.service.d/skill-router-env.conf << 'EOF'
-[Service]
-Environment="SKILL_ROUTER_BUCKET=my-skill-router"
-Environment="SKILL_ROUTER_INDEX_PREFIX=skills"
-Environment="SKILL_ROUTER_REGION=ap-northeast-1"
-EOF
-
-# 重载并重启 Gateway
-systemctl --user daemon-reload
-openclaw gateway restart
-```
-
-隔离干净，不碰 OpenClaw config，不污染全局 shell 环境。
-
-**macOS（launchd）**
-
-```bash
-# 方式 1：写入 launchd plist 的 EnvironmentVariables（永久生效）
-# 找到 OpenClaw Gateway 的 plist 文件路径
-ls ~/Library/LaunchAgents/ai.openclaw.gateway*.plist
-
-# 用 PlistBuddy 添加环境变量
-/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" \
-  ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null
-/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:SKILL_ROUTER_BUCKET string my-skill-router" \
-  ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:SKILL_ROUTER_INDEX_PREFIX string skills" \
-  ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-
-# 重载
-launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-launchctl load ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-
-# 方式 2：在 Gateway 启动前设置（简单但需手动启动）
-export SKILL_ROUTER_BUCKET=my-skill-router
-export SKILL_ROUTER_INDEX_PREFIX=skills
-openclaw gateway start
-```
-
-> ⚠️ **常见踩坑**：`agents.defaults.env` 不是 OpenClaw config schema 的合法字段，写入会导致 config 校验失败。不要尝试通过 OpenClaw 配置文件注入环境变量。
 
 ### 实测性能（基于本机 61 个 Skill + 真实历史查询集）
 

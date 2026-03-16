@@ -94,9 +94,17 @@ def main():
 
     results = resp.get("vectors", [])
 
-    # 3. 过滤低分结果
+    def get_score(r):
+        """兼容 S3 Vectors API 返回字段：优先取 distance，其次 score，均无则 None"""
+        if "distance" in r:
+            return r["distance"]
+        if "score" in r:
+            return r["score"]
+        return None
+
+    # 3. 过滤低分结果（仅在 API 返回相似度字段时生效）
     if args.score_threshold > 0:
-        results = [r for r in results if r.get("distance", 0) >= args.score_threshold]
+        results = [r for r in results if (get_score(r) or 0) >= args.score_threshold]
 
     # 4. 格式化输出
     if args.output == "names":
@@ -112,16 +120,28 @@ def main():
             meta = r.get("metadata", {})
             name = r["key"]
             desc = meta.get("description", "")
-            score = r.get("distance", 0)
+            score = get_score(r)
             lines.append(f"  <skill>")
             lines.append(f"    <name>{name}</name>")
             lines.append(f"    <description>{desc}</description>")
-            lines.append(f"    <score>{score:.4f}</score>")
+            if score is not None:
+                lines.append(f"    <score>{score:.4f}</score>")
             lines.append(f"  </skill>")
         lines.append("</available_skills>")
         print("\n".join(lines))
 
     else:  # json
+        def fmt_result(i, r):
+            score = get_score(r)
+            entry = {
+                "rank": i + 1,
+                "name": r["key"],
+                "description": r.get("metadata", {}).get("description", ""),
+            }
+            if score is not None:
+                entry["score"] = round(score, 6)
+            return entry
+
         output = {
             "success": True,
             "action": "skill_router",
@@ -130,15 +150,7 @@ def main():
             "bucket": args.bucket,
             "index": args.index,
             "results_count": len(results),
-            "results": [
-                {
-                    "rank": i + 1,
-                    "name": r["key"],
-                    "score": round(r.get("distance", 0), 6),
-                    "description": r.get("metadata", {}).get("description", ""),
-                }
-                for i, r in enumerate(results)
-            ],
+            "results": [fmt_result(i, r) for i, r in enumerate(results)],
         }
         print(json.dumps(output, ensure_ascii=False, indent=2))
 
