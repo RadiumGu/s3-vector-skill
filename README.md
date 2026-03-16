@@ -60,11 +60,30 @@ aws configure --profile my-profile
 ### 安装到 OpenClaw
 
 ```bash
-# 方式 1：手动复制到 Skill 目录
+# 克隆仓库
+git clone https://github.com/RadiumGu/s3-vector-skill.git
+cd s3-vector-skill
+
+# 方式 1：一键部署（推荐）——自动完成建库、Hook 安装、环境变量注入、Gateway 重启
+./install.sh --bucket my-skill-router --yes
+
+# 方式 2：手动复制 Skill 到 OpenClaw workspace
 cp -r s3-vector-skill ~/.openclaw/workspace-<agent>/skills/s3-vector-bucket
 
-# 方式 2：Git 子模块（团队协作推荐）
+# 方式 3：Git 子模块（团队协作推荐）
 git submodule add https://github.com/RadiumGu/s3-vector-skill .openclaw/skills/s3-vector-bucket
+```
+
+`install.sh` 自动完成 5 步：前置检查 → Skill 索引建库（含 `--sync`）→ Hook 安装 → 环境变量注入（Linux systemd / macOS launchd）→ Gateway 重启，首次部署约 3 分钟。
+
+```bash
+# install.sh 参数说明
+./install.sh --bucket <桶名>          # 指定向量桶名称
+             --prefix skills         # 索引前缀（默认 skills）
+             --region ap-northeast-1 # S3 Vectors Region
+             --embed-region us-east-1 # Bedrock Region（若不同 Region 可指定）
+             --yes / -y              # 跳过确认提示
+             --skip-build            # 跳过建库（已有索引时使用）
 ```
 
 安装后，在 OpenClaw 对话中使用自然语言即可触发：
