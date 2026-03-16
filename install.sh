@@ -247,15 +247,18 @@ if [[ "$PLATFORM" == "linux" ]]; then
 
   if [[ -z "$SERVICE_NAME" ]]; then
     warn "未检测到 OpenClaw Gateway systemd service"
-    warn "将环境变量写入 ~/.bashrc（手动启动 Gateway 时生效）"
+    # 写入独立 env 文件，然后在 rc 文件中 source 它（幂等、安全）
+    ENV_FILE="$HOME/.config/openclaw/skill-router.env"
+    mkdir -p "$(dirname "$ENV_FILE")"
+    : > "$ENV_FILE"
     for var in "${ENV_VARS[@]}"; do
-      # 避免重复写入
-      key="${var%%=*}"
-      grep -q "^export $key=" "$HOME/.bashrc" 2>/dev/null && \
-        sed -i "/^export $key=/d" "$HOME/.bashrc"
-      echo "export $var" >> "$HOME/.bashrc"
+      echo "export $var" >> "$ENV_FILE"
     done
-    ok "环境变量已写入 ~/.bashrc"
+    # 确保 .bashrc source 该文件（只添加一次）
+    SOURCE_LINE="[ -f \"$ENV_FILE\" ] && . \"$ENV_FILE\""
+    grep -qF "$ENV_FILE" "$HOME/.bashrc" 2>/dev/null || \
+      echo "$SOURCE_LINE" >> "$HOME/.bashrc"
+    ok "环境变量已写入 $ENV_FILE（通过 ~/.bashrc 自动加载）"
   else
     OVERRIDE_DIR="$SYSTEMD_DIR/${SERVICE_NAME}.service.d"
     OVERRIDE_FILE="$OVERRIDE_DIR/skill-router-env.conf"
@@ -285,16 +288,19 @@ elif [[ "$PLATFORM" == "macos" ]]; then
 
   if [[ -z "$PLIST" ]]; then
     warn "未找到 OpenClaw Gateway launchd plist"
-    warn "将环境变量写入 ~/.zshrc（手动启动 Gateway 时生效）"
+    # 写入独立 env 文件，然后在 rc 文件中 source 它（幂等、安全）
+    ENV_FILE="$HOME/.config/openclaw/skill-router.env"
+    mkdir -p "$(dirname "$ENV_FILE")"
+    : > "$ENV_FILE"
+    for var in "${ENV_VARS[@]}"; do
+      echo "export $var" >> "$ENV_FILE"
+    done
     RCFILE="$HOME/.zshrc"
     [[ -f "$HOME/.bash_profile" ]] && ! [[ -f "$HOME/.zshrc" ]] && RCFILE="$HOME/.bash_profile"
-    for var in "${ENV_VARS[@]}"; do
-      key="${var%%=*}"
-      grep -q "^export $key=" "$RCFILE" 2>/dev/null && \
-        sed -i '' "/^export $key=/d" "$RCFILE"
-      echo "export $var" >> "$RCFILE"
-    done
-    ok "环境变量已写入 $RCFILE"
+    SOURCE_LINE="[ -f \"$ENV_FILE\" ] && . \"$ENV_FILE\""
+    grep -qF "$ENV_FILE" "$RCFILE" 2>/dev/null || \
+      echo "$SOURCE_LINE" >> "$RCFILE"
+    ok "环境变量已写入 $ENV_FILE（通过 $RCFILE 自动加载）"
   else
     # 确保 EnvironmentVariables dict 存在
     /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables dict" "$PLIST" 2>/dev/null || true

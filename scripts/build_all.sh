@@ -32,17 +32,20 @@ if [[ -z "$BUCKET" ]]; then
 fi
 
 # ── Agent 列表（自动扫描 workspace-* 目录）───────────────────────────
-declare -A AGENT_WORKSPACES=()
+# 使用两个平行数组代替 associative array（兼容 bash 3.2 / macOS）
+AGENT_IDS=()
+AGENT_WORKSPACES=()
 for ws in "$OPENCLAW_DIR"/workspace*; do
   [[ -d "$ws" ]] || continue
   dir_name="${ws##*/}"                     # workspace-general-tech
   agent_id="${dir_name#workspace}"         # -general-tech
   agent_id="${agent_id#-}"                 # general-tech
   [[ -z "$agent_id" ]] && agent_id="main" # workspace → main
-  AGENT_WORKSPACES[$agent_id]="$ws"
+  AGENT_IDS+=("$agent_id")
+  AGENT_WORKSPACES+=("$ws")
 done
 
-if [[ ${#AGENT_WORKSPACES[@]} -eq 0 ]]; then
+if [[ ${#AGENT_IDS[@]} -eq 0 ]]; then
   echo "❌ 未在 $OPENCLAW_DIR 下发现任何 workspace 目录"
   exit 1
 fi
@@ -62,8 +65,9 @@ PIDS=()
 LOG_DIR="/tmp/skill-router-build-logs"
 mkdir -p "$LOG_DIR"
 
-for agent_id in "${!AGENT_WORKSPACES[@]}"; do
-  workspace="${AGENT_WORKSPACES[$agent_id]}"
+for i in "${!AGENT_IDS[@]}"; do
+  agent_id="${AGENT_IDS[$i]}"
+  workspace="${AGENT_WORKSPACES[$i]}"
   local_skills="$workspace/skills"
   index_name="${INDEX_PREFIX}-${agent_id}"
   log_file="$LOG_DIR/${agent_id}.log"
@@ -111,8 +115,10 @@ done
 echo ""
 echo "======================================================"
 echo "  建库完成！各 Agent 索引名称："
-for agent_id in "${!AGENT_WORKSPACES[@]}"; do
-  [[ -d "${AGENT_WORKSPACES[$agent_id]}" ]] && \
+for i in "${!AGENT_IDS[@]}"; do
+  agent_id="${AGENT_IDS[$i]}"
+  workspace="${AGENT_WORKSPACES[$i]}"
+  [[ -d "$workspace" ]] && \
     echo "  $agent_id → ${INDEX_PREFIX}-${agent_id}"
 done
 echo ""

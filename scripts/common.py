@@ -9,18 +9,51 @@ import json
 import os
 import re
 import sys
+from typing import Dict, List, Optional
 
 
 # ── 默认 Skill 扫描目录 ──────────────────────────────────────────────
+def _resolve_global_skills_dir():
+    """动态解析 openclaw 全局 skills 目录（避免硬编码 nvm 路径）"""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["node", "-e", "console.log(require.resolve('openclaw'))"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # require.resolve returns .../openclaw/index.js → take parent/skills
+            openclaw_root = os.path.dirname(result.stdout.strip())
+            skills_dir = os.path.join(openclaw_root, "skills")
+            if os.path.isdir(skills_dir):
+                return skills_dir
+    except Exception:
+        pass
+    # fallback: 常见安装位置
+    for candidate in [
+        os.path.expanduser("~/.nvm/versions/node"),  # scan nvm versions
+    ]:
+        if os.path.isdir(candidate):
+            for ver in sorted(os.listdir(candidate), reverse=True):
+                p = os.path.join(candidate, ver, "lib/node_modules/openclaw/skills")
+                if os.path.isdir(p):
+                    return p
+    return None
+
+
+_global_skills = _resolve_global_skills_dir()
+
 DEFAULT_SKILL_DIRS = [
-    os.path.expanduser("~/.openclaw/workspace-general-tech/skills"),
-    os.path.expanduser("~/.openclaw/workspace/skills"),
-    os.path.expanduser("~/.nvm/versions/node/v22.22.0/lib/node_modules/openclaw/skills"),
-    os.path.expanduser("~/.openclaw/skills"),
+    d for d in [
+        os.path.expanduser("~/.openclaw/workspace-general-tech/skills"),
+        os.path.expanduser("~/.openclaw/workspace/skills"),
+        _global_skills,
+        os.path.expanduser("~/.openclaw/skills"),
+    ] if d is not None
 ]
 
 
-def base_parser(description):
+def base_parser(description, bucket_required=True):
     """创建基础参数解析器，包含凭证和连接参数"""
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
@@ -30,7 +63,8 @@ def base_parser(description):
     )
     parser.add_argument(
         "--bucket",
-        required=True,
+        required=bucket_required,
+        default=None,
         help="S3 向量桶名称，如 my-vector-bucket",
     )
     parser.add_argument(
@@ -194,7 +228,8 @@ def _parse_skill_md_regex(fm: str, path: str) -> dict | None:
     return {"name": name, "description": description, "path": path}
 
 
-def find_skills(skill_dirs: list[str] | None = None) -> list[dict]:
+def find_skills(skill_dirs=None):
+    # type: (Optional[List[str]]) -> List[Dict]
     """递归扫描目录，收集所有有效 SKILL.md"""
     dirs = skill_dirs or DEFAULT_SKILL_DIRS
     skills = []

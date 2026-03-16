@@ -17,10 +17,7 @@ from common import base_parser, create_client, success_output, run
 
 
 def main():
-    parser = base_parser("列出所有 Amazon S3 向量桶")
-    # 对于 list 操作，--bucket 不需要，但 base_parser 要求必填；用 nargs='?' 覆盖
-    parser._option_string_actions["--bucket"].required = False
-    parser._option_string_actions["--bucket"].default = None
+    parser = base_parser("列出所有 Amazon S3 向量桶", bucket_required=False)
     parser.add_argument("--max-results", type=int, default=None, help="最大返回数量")
     parser.add_argument("--prefix", default=None, help="桶名前缀过滤")
     parser.add_argument("--next-token", default=None, help="分页 Token")

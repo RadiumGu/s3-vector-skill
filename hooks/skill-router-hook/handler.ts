@@ -149,9 +149,4 @@ function extractRecentContext(workspaceDir: string): string {
   return [...headings, ...paragraphs].join("\n").slice(-500).trim();
 }
 
-/** 简单 shell 转义（保留，用于日志输出）*/
-function shellEscape(s: string): string {
-  return "'" + s.replace(/'/g, "'\\''") + "'";
-}
-
 export default handler;
