@@ -80,7 +80,7 @@ git submodule add https://github.com/RadiumGu/s3-vector-skill .openclaw/skills/s
 
 ## 🧭 Skill 路由（Token 降本 ~91%）
 
-> **灵感来源**：仿照腾讯云 COS Vector 向量桶 Skill 路由方案，AWS 原生实现。
+> **灵感来源**：Amazon S3 Vectors 原生实现的 Skill 路由方案。
 > 将单轮对话 Skill 相关 Token 从 ~4867 降至 ~430（节省 **~91%**）。
 
 ### 原理
