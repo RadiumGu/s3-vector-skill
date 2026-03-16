@@ -6,7 +6,9 @@
 >
 > Based on Amazon S3 Vectors (re:Invent 2025 GA), reducing costs by **90%** compared to traditional vector databases.
 >
-> With OpenClaw Skill Router integration, Skill-related Token consumption per turn drops by **~90%**, reducing overall LLM costs by **~36%** (measured in Tokyo Region).
+> With OpenClaw Skill Router integration, Skill injection Tokens drop by **~91%** at session start (`agent:bootstrap`), reducing overall LLM bill by **~36%** (measured in Tokyo Region).
+
+> ℹ️ **When to use**: The Skill Router is most useful with **30+ Skills**. Below that, OpenClaw's full injection works fine — no extra setup needed.
 
 ---
 

@@ -6,7 +6,9 @@
 >
 > 基于 Amazon S3 Vectors（re:Invent 2025 GA），比传统向量数据库降低 **90%** 成本。
 >
-> 集成 OpenClaw Skill 路由后，每轮 Skill 相关 Token 消耗降低 **~90%**，整体 LLM 使用成本降低 **~36%**（基于东京 Region 实测）。
+> 集成 OpenClaw Skill 路由后，会话首轮（`agent:bootstrap`）Skill 注入 Token 降低 **~91%**，整体 LLM 账单降低 **~36%**（基于东京 Region 实测）。
+
+> ℹ️ **适用场景**：Skill Router 在 Skill 数量 **30+** 时收益最大。少于此数，OpenClaw 全量注入即可，无需额外部署。
 
 ---
 
