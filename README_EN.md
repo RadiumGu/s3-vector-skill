@@ -121,7 +121,6 @@ python3 scripts/stats.py --bucket openclaw-kb --output markdown
 |---------|-----------|
 | "Store this link in the KB" | Fetch page → chunk → ingest |
 | "Save to KB, work related" | Ingest with tag = work |
-| "This is important, store carefully" | Deep read mode (contextual) |
 | "Import all files from /docs/" | Batch ingest |
 | "Sync the KB" | Incremental sync (changes only) |
 
@@ -136,14 +135,59 @@ python3 scripts/ingest.py --bucket openclaw-kb --dir /path/to/docs/ --glob "*.md
 # From stdin (pipe with web_fetch, etc.)
 echo "text content" | python3 scripts/ingest.py --bucket openclaw-kb --doc-id "article-001"
 
-# Important docs — deep read mode (LLM context prefix, +35-49% recall, higher cost)
-python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
-
 # Incremental sync (only update changed files, delete removed)
 python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --sync
 
 # Dry run (no actual writes)
 python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --dry-run
+```
+
+### ⭐ Deep Read Mode (Contextual Chunking)
+
+Standard ingestion only chunks + embeds. **Deep read mode** additionally uses an LLM to generate a context summary for each chunk, improving search recall by **35-49%** (Anthropic research).
+
+**When to use deep read mode?**
+- Important reference docs (architecture designs, RCA reports, technical standards)
+- Long docs with unclear structure (meeting notes, plain text)
+- Documents where you need higher search accuracy
+
+**How to activate deep read mode?**
+
+Say these keywords and the Agent automatically enables it:
+
+| You Say | Triggers |
+|---------|----------|
+| "This is **important**, store it" | ✅ Deep read |
+| "Store it **carefully**" | ✅ Deep read |
+| "**Deep read** this before storing" | ✅ Deep read |
+| "Use **high quality** mode" | ✅ Deep read |
+| "Store in KB" (no emphasis) | ❌ Standard mode |
+
+**Comparison:**
+
+```
+Standard mode (default):
+  chunk: "When Pod is Pending, check Events..."
+  → Searching "scheduling failure" might miss this
+
+Deep read mode:
+  chunk: "[From EKS Troubleshooting Guide Ch.3, discussing Pod scheduling diagnostics]
+          When Pod is Pending, check Events..."
+  → Searching "scheduling failure" almost certainly hits ✅
+```
+
+**Cost difference:**
+- Standard: 100 docs ~$0.015 (one-time)
+- Deep read: 100 docs ~$4.50 (one-time, Haiku generates context prefixes)
+
+**Via command line:**
+```bash
+# Deep read mode
+python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
+
+# Specify LLM model (default Haiku, cheapest)
+python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --contextual \
+  --contextual-model anthropic.claude-3-haiku-20240307-v1:0
 ```
 
 ### Search Knowledge

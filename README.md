@@ -125,7 +125,6 @@ python3 scripts/stats.py --bucket openclaw-kb --output markdown
 |--------|-----------|
 | "把这个链接存到知识库" | 抓取网页 → 分块 → 入库 |
 | "存到知识库，工作用的" | 入库，tag = work |
-| "这篇很重要，仔细存一下" | 精读模式入库（contextual） |
 | "把 /docs/ 下面的文件都导入" | 批量入库 |
 | "同步一下知识库" | 增量同步（只更新变更） |
 
@@ -140,14 +139,59 @@ python3 scripts/ingest.py --bucket openclaw-kb --dir /path/to/docs/ --glob "*.md
 # 从 stdin 导入（配合 web_fetch 等管道）
 echo "文本内容" | python3 scripts/ingest.py --bucket openclaw-kb --doc-id "article-001"
 
-# 重要文档精读（LLM 生成上下文前缀，召回率 +35-49%，成本更高）
-python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
-
 # 增量同步（只更新变更文件，删除已移除文件）
 python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --sync
 
 # 试运行（不实际写入）
 python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --dry-run
+```
+
+### ⭐ 精读模式（Contextual Chunking）
+
+普通入库只做分块 + embedding。**精读模式**额外用 LLM 给每个 chunk 生成上下文摘要，搜索时召回率提升 **35-49%**（Anthropic 研究数据）。
+
+**什么时候用精读模式？**
+- 重要的参考文档（架构方案、RCA 报告、技术标准）
+- 内容结构不清晰的长文档（会议记录、纯文本笔记）
+- 希望搜索更准的文档
+
+**怎么唤醒精读模式？**
+
+说这些关键词，Agent 自动启用：
+
+| 你说的 | 触发 |
+|--------|------|
+| "这篇**很重要**，存一下" | ✅ 精读模式 |
+| "**仔细**存到知识库" | ✅ 精读模式 |
+| "**精读**一下再存" | ✅ 精读模式 |
+| "用**高质量**模式入库" | ✅ 精读模式 |
+| "存到知识库"（不强调） | ❌ 普通模式 |
+
+**效果对比：**
+
+```
+普通模式（默认）：
+  chunk: "Pod 处于 Pending 状态时检查 Events..."
+  → 搜索 "调度失败" 可能命中，也可能漏掉
+
+精读模式：
+  chunk: "[本段来自 EKS 故障排查指南第 3 章，讨论 Pod 调度失败的诊断步骤]
+          Pod 处于 Pending 状态时检查 Events..."
+  → 搜索 "调度失败" 几乎必定命中 ✅
+```
+
+**成本差异：**
+- 普通模式：100 篇文档 ~$0.015（一次性）
+- 精读模式：100 篇文档 ~$4.50（一次性，Haiku 生成上下文前缀）
+
+**命令行方式：**
+```bash
+# 精读模式
+python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
+
+# 指定 LLM 模型（默认 Haiku，最便宜）
+python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --contextual \
+  --contextual-model anthropic.claude-3-haiku-20240307-v1:0
 ```
 
 ### 搜知识
