@@ -120,6 +120,16 @@ python3 scripts/stats.py --bucket openclaw-kb --output markdown
 
 ### 存文档
 
+**对话方式：**
+| 你说的 | Agent 做的 |
+|--------|-----------|
+| "把这个链接存到知识库" | 抓取网页 → 分块 → 入库 |
+| "存到知识库，工作用的" | 入库，tag = work |
+| "这篇很重要，仔细存一下" | 精读模式入库（contextual） |
+| "把 /docs/ 下面的文件都导入" | 批量入库 |
+| "同步一下知识库" | 增量同步（只更新变更） |
+
+**命令行方式：**
 ```bash
 # 单文件
 python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --tags "work"
@@ -142,6 +152,14 @@ python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --dry-run
 
 ### 搜知识
 
+**对话方式：**
+| 你说的 | Agent 做的 |
+|--------|-----------|
+| "EKS Pod 调度失败怎么排查？" | 自动搜知识库 → 📚 标注来源回答 |
+| "工作知识库里搜一下 xxx" | 只搜 tag=work |
+| "知识库里有关于容灾的内容吗？" | 搜索 → 列出匹配结果 |
+
+**命令行方式：**
 ```bash
 # 语义搜索
 python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod 调度失败" --top-k 5
@@ -149,7 +167,7 @@ python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod 调度失败" --
 # Markdown 输出（适合 Agent 回复）
 python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod 调度失败" --output markdown
 
-# 按 tag 过滤（只搜某个分类）
+# 按 tag 过滤
 python3 scripts/search.py --bucket openclaw-kb --query "..." --filter '{"tags": {"$eq": "work"}}'
 
 # 调整相似度阈值（默认 0.6）
@@ -158,6 +176,14 @@ python3 scripts/search.py --bucket openclaw-kb --query "..." --threshold 0.7
 
 ### 管理知识库
 
+**对话方式：**
+| 你说的 | Agent 做的 |
+|--------|-----------|
+| "知识库里有什么？" | 显示文档数、chunk 数、tag 分布 |
+| "删掉关于 Terraform 的文档" | 按 doc_id 删除 |
+| "把那篇文档改成运维分类" | 重新分类 |
+
+**命令行方式：**
 ```bash
 # 查看状态
 python3 scripts/stats.py --bucket openclaw-kb --output markdown
@@ -175,21 +201,20 @@ python3 scripts/manage_tags.py --reclassify --doc-id "doc-001" --new-tag "ops" \
 
 ### 管理 Tag
 
+**对话方式：**
+| 你说的 | Agent 做的 |
+|--------|-----------|
+| "现在有哪些标签？" | 列出所有 tag |
+| "加一个架构韧性的标签" | 添加新 tag |
+| "把 learning 标签删掉" | 删除 tag |
+| "work 标签加上 terraform" | 追加关键词 |
+
+**命令行方式：**
 ```bash
-# 查看所有 tag
 python3 scripts/manage_tags.py --list
-
-# 添加
 python3 scripts/manage_tags.py --add "新分类" --label "新分类" --keywords "关键词1,关键词2"
-
-# 删除
 python3 scripts/manage_tags.py --remove "旧分类"
-
-# 追加关键词
 python3 scripts/manage_tags.py --update "work" --add-keywords "terraform,docker"
-
-# 替换全部关键词
-python3 scripts/manage_tags.py --update "work" --keywords "新关键词1,新关键词2"
 ```
 
 ---

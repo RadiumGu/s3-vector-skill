@@ -116,6 +116,16 @@ python3 scripts/stats.py --bucket openclaw-kb --output markdown
 
 ### Store Documents
 
+**Via conversation:**
+| You Say | Agent Does |
+|---------|-----------|
+| "Store this link in the KB" | Fetch page → chunk → ingest |
+| "Save to KB, work related" | Ingest with tag = work |
+| "This is important, store carefully" | Deep read mode (contextual) |
+| "Import all files from /docs/" | Batch ingest |
+| "Sync the KB" | Incremental sync (changes only) |
+
+**Via command line:**
 ```bash
 # Single file
 python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --tags "work"
@@ -138,6 +148,14 @@ python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --dry-run
 
 ### Search Knowledge
 
+**Via conversation:**
+| You Say | Agent Does |
+|---------|-----------|
+| "How to troubleshoot EKS Pod scheduling?" | Auto-search KB → 📚 answer with sources |
+| "Search work KB for xxx" | Filter by tag=work |
+| "Anything about disaster recovery?" | Search → list matches |
+
+**Via command line:**
 ```bash
 # Semantic search
 python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod scheduling failure" --top-k 5
@@ -154,6 +172,14 @@ python3 scripts/search.py --bucket openclaw-kb --query "..." --threshold 0.7
 
 ### Manage Knowledge Base
 
+**Via conversation:**
+| You Say | Agent Does |
+|---------|-----------|
+| "What's in the KB?" | Show doc count, chunks, tag distribution |
+| "Delete the Terraform doc" | Delete by doc_id |
+| "Move that doc to ops category" | Reclassify |
+
+**Via command line:**
 ```bash
 # Status
 python3 scripts/stats.py --bucket openclaw-kb --output markdown
@@ -171,21 +197,20 @@ python3 scripts/manage_tags.py --reclassify --doc-id "doc-001" --new-tag "ops" \
 
 ### Manage Tags
 
+**Via conversation:**
+| You Say | Agent Does |
+|---------|-----------|
+| "What tags do we have?" | List all tags |
+| "Add an architecture tag" | Add new tag |
+| "Remove the learning tag" | Delete tag |
+| "Add terraform to work tag" | Append keyword |
+
+**Via command line:**
 ```bash
-# List all tags
 python3 scripts/manage_tags.py --list
-
-# Add
 python3 scripts/manage_tags.py --add "new-tag" --label "New Tag" --keywords "keyword1,keyword2"
-
-# Remove
 python3 scripts/manage_tags.py --remove "old-tag"
-
-# Append keywords
 python3 scripts/manage_tags.py --update "work" --add-keywords "terraform,docker"
-
-# Replace all keywords
-python3 scripts/manage_tags.py --update "work" --keywords "new-kw1,new-kw2"
 ```
 
 ---
