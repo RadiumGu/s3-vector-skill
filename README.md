@@ -21,42 +21,116 @@
 
 ---
 
-## 🚀 快速开始
+## 🚀 从零开始配置
 
-### 前置条件
+### Step 0：环境准备
 
 | 依赖 | 要求 |
 |------|------|
 | Python | >= 3.10 |
-| boto3 | 最新版（需支持 s3vectors） |
+| boto3 | 最新版（需支持 `s3vectors` 客户端） |
 | AWS 权限 | `s3vectors:*` + `bedrock:InvokeModel` |
+| OpenClaw | >= 2026.3（作为 Skill 使用时） |
 
 ```bash
 pip3 install boto3 --upgrade
+
+# 验证 boto3 支持 s3vectors
+python3 -c "import boto3; boto3.client('s3vectors', region_name='ap-northeast-1'); print('✅ OK')"
 ```
 
-### 初始化知识库
+### Step 1：创建知识库（S3 向量桶 + 索引）
 
 ```bash
-# 一键初始化（创建向量桶 + 索引）
+# 一键初始化
 ./install.sh --bucket openclaw-kb --index docs-v1
 
-# 或手动
+# 或手动分步执行
 python3 scripts/create_vector_bucket.py --bucket openclaw-kb
 python3 scripts/create_index.py --bucket openclaw-kb --index docs-v1 --dimension 1024
 ```
+
+初始化完成后你会得到：
+- 一个 S3 向量桶：`openclaw-kb`
+- 一个 1024 维的 cosine 索引：`docs-v1`
+
+### Step 2：设定 Tag 分类
+
+Tag 用于给文档分类，方便按类别搜索。支持中文。
+
+```bash
+# 查看当前 tag
+python3 scripts/manage_tags.py --list
+
+# 添加 tag（至少 2 个关键词，Agent 会根据关键词自动映射）
+python3 scripts/manage_tags.py --add "work" --label "工作" \
+  --keywords "工作,技术,AWS,架构,部署" --description "工作技术文档"
+
+python3 scripts/manage_tags.py --add "life" --label "生活" \
+  --keywords "生活,旅游,美食,健康" --description "生活日常"
+
+python3 scripts/manage_tags.py --add "AI" --label "AI" \
+  --keywords "AI,大模型,LLM,机器学习,RAG" --description "AI 相关"
+
+# 中文 tag 名也可以
+python3 scripts/manage_tags.py --add "财经" --label "财经" \
+  --keywords "股票,基金,投资,理财" --description "财经相关"
+```
+
+Tag 配置保存在 `config/tags.json`，所有 Agent 共享。
+
+### Step 3：注册到 OpenClaw Agent
+
+```bash
+# 为 Agent 创建软链接（每个需要知识库的 Agent 执行一次）
+ln -s /path/to/s3-vector-skill ~/.openclaw/workspace-<NAME>/skills/s3-vector-bucket
+
+# 示例：为所有 Agent 批量配置
+for ws in ~/.openclaw/workspace-*/; do
+  mkdir -p "$ws/skills"
+  ln -s /path/to/s3-vector-skill "$ws/skills/s3-vector-bucket" 2>/dev/null
+done
+```
+
+配置后 Agent 重启生效。所有配置了的 Agent 共享同一个知识库。
+
+### Step 4：验证
+
+```bash
+# 存一篇测试文档
+python3 scripts/ingest.py --bucket openclaw-kb --file /path/to/any-doc.md --tags "work"
+
+# 搜索
+python3 scripts/search.py --bucket openclaw-kb --query "文档中的某个关键内容" --output markdown
+
+# 查看知识库状态
+python3 scripts/stats.py --bucket openclaw-kb --output markdown
+```
+
+---
+
+## 📖 日常使用
 
 ### 存文档
 
 ```bash
 # 单文件
-python3 scripts/ingest.py --bucket openclaw-kb --file /path/to/doc.md --tags "work"
+python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --tags "work"
 
-# 目录批量
-python3 scripts/ingest.py --bucket openclaw-kb --dir /path/to/docs/ --glob "*.md" --sync
+# 目录批量导入
+python3 scripts/ingest.py --bucket openclaw-kb --dir /path/to/docs/ --glob "*.md"
 
-# 重要文档精读（LLM 生成上下文前缀）
+# 从 stdin 导入（配合 web_fetch 等管道）
+echo "文本内容" | python3 scripts/ingest.py --bucket openclaw-kb --doc-id "article-001"
+
+# 重要文档精读（LLM 生成上下文前缀，召回率 +35-49%，成本更高）
 python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
+
+# 增量同步（只更新变更文件，删除已移除文件）
+python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --sync
+
+# 试运行（不实际写入）
+python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --dry-run
 ```
 
 ### 搜知识
@@ -65,11 +139,14 @@ python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
 # 语义搜索
 python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod 调度失败" --top-k 5
 
-# Markdown 格式输出（Agent 友好）
+# Markdown 输出（适合 Agent 回复）
 python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod 调度失败" --output markdown
 
-# 按 tag 过滤
+# 按 tag 过滤（只搜某个分类）
 python3 scripts/search.py --bucket openclaw-kb --query "..." --filter '{"tags": {"$eq": "work"}}'
+
+# 调整相似度阈值（默认 0.6）
+python3 scripts/search.py --bucket openclaw-kb --query "..." --threshold 0.7
 ```
 
 ### 管理知识库
@@ -78,49 +155,65 @@ python3 scripts/search.py --bucket openclaw-kb --query "..." --filter '{"tags": 
 # 查看状态
 python3 scripts/stats.py --bucket openclaw-kb --output markdown
 
-# 管理 tag（支持中文）
-python3 scripts/manage_tags.py --list
-python3 scripts/manage_tags.py --add "架构韧性" --label "架构韧性" --keywords "韧性,容灾,高可用"
-python3 scripts/manage_tags.py --remove "架构韧性"
+# 只看 tag 分布
+python3 scripts/stats.py --bucket openclaw-kb --tags
 
 # 删除文档
 python3 scripts/ingest.py --bucket openclaw-kb --delete --doc-id "old-document"
 
-# 增量同步
-python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --sync
+# 重新分类文档
+python3 scripts/manage_tags.py --reclassify --doc-id "doc-001" --new-tag "ops" \
+  --bucket openclaw-kb
+```
+
+### 管理 Tag
+
+```bash
+# 查看所有 tag
+python3 scripts/manage_tags.py --list
+
+# 添加
+python3 scripts/manage_tags.py --add "新分类" --label "新分类" --keywords "关键词1,关键词2"
+
+# 删除
+python3 scripts/manage_tags.py --remove "旧分类"
+
+# 追加关键词
+python3 scripts/manage_tags.py --update "work" --add-keywords "terraform,docker"
+
+# 替换全部关键词
+python3 scripts/manage_tags.py --update "work" --keywords "新关键词1,新关键词2"
 ```
 
 ---
 
-## 🤖 OpenClaw Agent 集成
+## 🤖 OpenClaw Agent 使用方式
 
-### 安装到 Agent
-
-```bash
-# 软链接到 workspace（所有配置了的 Agent 共享同一个知识库）
-ln -s /path/to/s3-vector-skill ~/.openclaw/workspace-<NAME>/skills/s3-vector-bucket
-```
-
-### 使用方式
-
-不需要记命令，对 Agent 说自然语言：
+配置好后不需要记任何命令，对 Agent 说自然语言：
 
 | 你说的 | Agent 做的 |
 |--------|-----------|
 | "把这个链接存到知识库" | `web_fetch` → `ingest.py` |
 | "这篇很重要，仔细存一下" | `ingest.py --contextual` |
 | "存到知识库，工作用的" | `ingest.py --tags "work"` |
+| "把 /docs/ 下面的文件都导入" | `ingest.py --dir` |
+| "同步一下知识库" | `ingest.py --sync` |
 | "EKS Pod 调度失败怎么排查？" | 先搜知识库 → 📚 标注来源回答 |
+| "工作知识库里搜一下 xxx" | `search.py --filter tag=work` |
 | "知识库里有什么？" | `stats.py` |
 | "加一个架构韧性的标签" | `manage_tags.py --add` |
+| "把那篇文档删掉" | `ingest.py --delete` |
 
 ### 来源标注
 
 Agent 回答时自动标注信息来源：
 
-- 📚 — 来自知识库（附 chunk 来源和相似度）
-- 🌐 — 来自网络搜索
-- 🤖 — 来自模型自身知识
+| 图标 | 含义 |
+|------|------|
+| 📚 | 来自知识库（附 chunk 来源和相似度） |
+| 🌐 | 来自网络搜索 |
+| 🤖 | 来自模型自身知识 |
+| 📚+🌐 | 知识库 + 网络补充 |
 
 ---
 
@@ -134,21 +227,7 @@ Agent 回答时自动标注信息来源：
 
 - 默认 512 tokens/chunk，64 tokens overlap（Vecta 2026 benchmark 最优参数）
 - Markdown 文件自动识别 heading 结构，保留层级路径
-
----
-
-## 🏷️ Tag 分类
-
-预定义 tag 在 `config/tags.json`，支持中文：
-
-| Tag | 说明 |
-|-----|------|
-| `work` | 工作技术文档 |
-| `life` | 生活日常 |
-| `ops` | 运维手册、故障排查 |
-| `learning` | 学习笔记 |
-
-用户可通过对话添加新 tag（如"架构韧性"）。Agent 根据关键词自动映射，不会自己发明新 tag。
+- 不采用 Semantic Chunking（benchmark 仅 54%，碎片化严重）
 
 ---
 
@@ -158,9 +237,27 @@ Agent 回答时自动标注信息来源：
 
 | 模式 | 费用 |
 |------|------|
-| 标准模式 | < $0.02/月 |
+| 标准模式 | < **$0.02/月** |
 | Contextual 模式 | ~$4.50 一次性 + $0.005/月 |
 | Bedrock Knowledge Bases（对比） | ~$175/月 |
+
+---
+
+## 🏗️ 多 Agent 共享架构
+
+```
+Agent A ─┐
+Agent B ──┤── symlink → s3-vector-skill/ ── config/tags.json
+Agent C ──┘                               └─ scripts/*.py
+                                                    │
+                                                    ▼
+                                          S3 Vectors: openclaw-kb
+                                          索引: docs-v1
+```
+
+- **一份代码、一份 tag 配置、一个知识库**，所有 Agent 共享
+- 任一 Agent 存的文档，其他 Agent 都能搜到
+- Tag 分类提供逻辑隔离（"只搜工作知识"）
 
 ---
 
@@ -168,28 +265,28 @@ Agent 回答时自动标注信息来源：
 
 ```
 s3-vector-skill/
-├── SKILL.md                    # OpenClaw Skill 定义
-├── PRD.md                      # 产品需求文档
-├── README.md                   # 中文文档
+├── SKILL.md                    # OpenClaw Skill 定义（Agent 读取）
+├── PRD.md                      # 产品需求文档（不推送到 GitHub）
+├── README.md                   # 中文文档（本文件）
 ├── README_EN.md                # English docs
-├── install.sh                  # 一键初始化
+├── install.sh                  # 一键初始化（创建桶 + 索引）
 ├── config/
-│   └── tags.json               # Tag 分类配置
+│   └── tags.json               # Tag 分类配置（支持中文）
 ├── scripts/
-│   ├── common.py               # 公共模块
-│   ├── embed.py                # Bedrock Titan v2 Embedding
-│   ├── chunker.py              # 文档分块（recursive + heading-aware）
-│   ├── ingest.py               # 文档摄入（分块 + embedding + 写入）
-│   ├── search.py               # 语义搜索
-│   ├── stats.py                # 知识库状态
-│   ├── manage_tags.py          # Tag 管理
+│   ├── common.py               # 公共模块（参数解析、客户端、错误处理）
+│   ├── embed.py                # Bedrock Titan v2 Embedding（1024d，带缓存）
+│   ├── chunker.py              # 文档分块（recursive + heading-aware + auto）
+│   ├── ingest.py               # 文档摄入（分块 + embed + 写入 + sync + delete）
+│   ├── search.py               # 语义搜索（markdown/json 输出，来源标注）
+│   ├── stats.py                # 知识库状态（文档数、chunks、tag 分布）
+│   ├── manage_tags.py          # Tag 管理（增删改查 + 重新分类）
 │   ├── create_vector_bucket.py # 创建向量桶
 │   ├── delete_vector_bucket.py # 删除向量桶
 │   ├── get_vector_bucket.py    # 查询向量桶
 │   ├── list_vector_buckets.py  # 列出向量桶
-│   ├── put_vector_bucket_policy.py
-│   ├── get_vector_bucket_policy.py
-│   ├── delete_vector_bucket_policy.py
+│   ├── put_vector_bucket_policy.py  # 设置桶策略
+│   ├── get_vector_bucket_policy.py  # 获取桶策略
+│   ├── delete_vector_bucket_policy.py # 删除桶策略
 │   ├── create_index.py         # 创建索引
 │   ├── get_index.py            # 查询索引
 │   ├── list_indexes.py         # 列出索引
@@ -198,7 +295,7 @@ s3-vector-skill/
 │   ├── get_vectors.py          # 获取向量
 │   ├── list_vectors.py         # 列出向量
 │   ├── delete_vectors.py       # 删除向量
-│   └── query_vectors.py        # 相似度搜索
+│   └── query_vectors.py        # 相似度搜索（底层 API）
 └── references/
     ├── api_reference.md        # S3 Vectors API 参考
     └── cli-reference.md        # CLI 命令参考
@@ -214,6 +311,9 @@ s3-vector-skill/
 | 向量距离 | cosine（推荐 RAG） |
 | 单索引上限 | 20 亿向量，查询延迟 < 100ms |
 | Metadata 限制 | 2048 bytes（UTF-8）per vector |
-| 支持格式 | Markdown、纯文本、HTML |
-| 增量同步 | content hash 对比，只更新变更 |
+| 支持文档格式 | Markdown、纯文本、HTML |
+| 增量同步 | content hash（MD5）对比，只更新变更 |
+| Tag 命名 | 支持中文、英文、数字、连字符 |
+| boto3 客户端 | `boto3.client('s3vectors', region_name=...)` |
+| 认证优先级 | 实例 IAM Role > 环境变量 > AWS Profile |
 | 已支持 Region | us-east-1, us-west-2, eu-west-1, ap-northeast-1 等 |
