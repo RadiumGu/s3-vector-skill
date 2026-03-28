@@ -41,13 +41,13 @@ python3 -c "import boto3; boto3.client('s3vectors', region_name='ap-northeast-1'
 
 ### Step 1：创建知识库（S3 向量桶 + 索引）
 
-```bash
-# 一键初始化
-./install.sh --bucket openclaw-kb --index docs-v1
+**对话方式（推荐）：**
+> 你："我想用知识库"
+> Agent：自动执行初始化，创建向量桶和索引
 
-# 或手动分步执行
-python3 scripts/create_vector_bucket.py --bucket openclaw-kb
-python3 scripts/create_index.py --bucket openclaw-kb --index docs-v1 --dimension 1024
+**命令行方式：**
+```bash
+./install.sh --bucket openclaw-kb --index docs-v1
 ```
 
 初始化完成后你会得到：
@@ -58,16 +58,20 @@ python3 scripts/create_index.py --bucket openclaw-kb --index docs-v1 --dimension
 
 Tag 用于给文档分类，方便按类别搜索。支持中文。
 
-```bash
-# 查看当前 tag
-python3 scripts/manage_tags.py --list
+**对话方式（推荐）：**
+> 你："加一个工作标签，关键词是技术、AWS、架构"
+> Agent：✅ 已添加分类 work（工作）
+>
+> 你："再加一个 AI 标签"
+> Agent：✅ 已添加分类 AI
+>
+> 你："现在有哪些标签？"
+> Agent：列出所有 tag 和文档数
 
-# 添加 tag（至少 2 个关键词，Agent 会根据关键词自动映射）
+**命令行方式：**
+```bash
 python3 scripts/manage_tags.py --add "work" --label "工作" \
   --keywords "工作,技术,AWS,架构,部署" --description "工作技术文档"
-
-python3 scripts/manage_tags.py --add "life" --label "生活" \
-  --keywords "生活,旅游,美食,健康" --description "生活日常"
 
 python3 scripts/manage_tags.py --add "AI" --label "AI" \
   --keywords "AI,大模型,LLM,机器学习,RAG" --description "AI 相关"
@@ -94,16 +98,19 @@ done
 
 配置后 Agent 重启生效。所有配置了的 Agent 共享同一个知识库。
 
-### Step 4：验证
+### Step 4：开始使用
 
+**对话方式（推荐）：**
+> 你："把这个链接存到知识库 https://docs.aws.amazon.com/..."
+> Agent：📚 已入库，共 12 个 chunk
+>
+> 你："EKS Pod 调度失败怎么排查？"
+> Agent：📚 以下回答基于知识库... [附来源]
+
+**命令行方式：**
 ```bash
-# 存一篇测试文档
 python3 scripts/ingest.py --bucket openclaw-kb --file /path/to/any-doc.md --tags "work"
-
-# 搜索
 python3 scripts/search.py --bucket openclaw-kb --query "文档中的某个关键内容" --output markdown
-
-# 查看知识库状态
 python3 scripts/stats.py --bucket openclaw-kb --output markdown
 ```
 

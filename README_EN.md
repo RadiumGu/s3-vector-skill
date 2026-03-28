@@ -41,13 +41,13 @@ python3 -c "import boto3; boto3.client('s3vectors', region_name='ap-northeast-1'
 
 ### Step 1: Create Knowledge Base (S3 Vector Bucket + Index)
 
-```bash
-# One-click setup
-./install.sh --bucket openclaw-kb --index docs-v1
+**Via conversation (recommended):**
+> You: "I want to use the knowledge base"
+> Agent: Automatically initializes — creates vector bucket and index
 
-# Or manually
-python3 scripts/create_vector_bucket.py --bucket openclaw-kb
-python3 scripts/create_index.py --bucket openclaw-kb --index docs-v1 --dimension 1024
+**Via command line:**
+```bash
+./install.sh --bucket openclaw-kb --index docs-v1
 ```
 
 After setup you'll have:
@@ -58,23 +58,23 @@ After setup you'll have:
 
 Tags categorize documents for filtered search. Supports CJK characters.
 
-```bash
-# View current tags
-python3 scripts/manage_tags.py --list
+**Via conversation (recommended):**
+> You: "Add a work tag, keywords: technical, AWS, architecture"
+> Agent: ✅ Added category work
+>
+> You: "Add an AI tag too"
+> Agent: ✅ Added category AI
+>
+> You: "What tags do we have?"
+> Agent: Lists all tags with doc counts
 
-# Add tags (at least 2 keywords — Agents auto-map based on keywords)
+**Via command line:**
+```bash
 python3 scripts/manage_tags.py --add "work" --label "Work" \
   --keywords "work,technical,AWS,architecture,deployment" --description "Work & technical docs"
 
-python3 scripts/manage_tags.py --add "life" --label "Life" \
-  --keywords "life,travel,food,health" --description "Daily life"
-
 python3 scripts/manage_tags.py --add "AI" --label "AI" \
   --keywords "AI,LLM,machine learning,RAG,embedding" --description "AI related"
-
-# CJK tag names work too
-python3 scripts/manage_tags.py --add "财经" --label "Finance" \
-  --keywords "stock,fund,investment,finance" --description "Finance related"
 ```
 
 Tag config is saved in `config/tags.json`, shared across all Agents.
@@ -94,16 +94,19 @@ done
 
 All configured Agents share the same knowledge base. Restart Agents to take effect.
 
-### Step 4: Verify
+### Step 4: Start Using
 
+**Via conversation (recommended):**
+> You: "Store this link in the KB https://docs.aws.amazon.com/..."
+> Agent: 📚 Ingested, 12 chunks
+>
+> You: "How to troubleshoot EKS Pod scheduling failure?"
+> Agent: 📚 Based on knowledge base... [with sources]
+
+**Via command line:**
 ```bash
-# Ingest a test document
 python3 scripts/ingest.py --bucket openclaw-kb --file /path/to/any-doc.md --tags "work"
-
-# Search
 python3 scripts/search.py --bucket openclaw-kb --query "some keyword from the doc" --output markdown
-
-# Check KB status
 python3 scripts/stats.py --bucket openclaw-kb --output markdown
 ```
 
