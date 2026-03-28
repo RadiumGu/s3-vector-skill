@@ -12,44 +12,6 @@ import sys
 
 
 # ── 默认 Skill 扫描目录 ──────────────────────────────────────────────
-def _resolve_global_skills_dir():
-    """动态解析 openclaw 全局 skills 目录（避免硬编码 nvm 路径）"""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ["node", "-e", "console.log(require.resolve('openclaw'))"],
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            # require.resolve returns .../openclaw/index.js → take parent/skills
-            openclaw_root = os.path.dirname(result.stdout.strip())
-            skills_dir = os.path.join(openclaw_root, "skills")
-            if os.path.isdir(skills_dir):
-                return skills_dir
-    except Exception:
-        pass
-    # fallback: 常见安装位置
-    for candidate in [
-        os.path.expanduser("~/.nvm/versions/node"),  # scan nvm versions
-    ]:
-        if os.path.isdir(candidate):
-            for ver in sorted(os.listdir(candidate), reverse=True):
-                p = os.path.join(candidate, ver, "lib/node_modules/openclaw/skills")
-                if os.path.isdir(p):
-                    return p
-    return None
-
-
-_global_skills = _resolve_global_skills_dir()
-
-DEFAULT_SKILL_DIRS = [
-    d for d in [
-        os.path.expanduser("~/.openclaw/workspace-general-tech/skills"),
-        os.path.expanduser("~/.openclaw/workspace/skills"),
-        _global_skills,
-        os.path.expanduser("~/.openclaw/skills"),
-    ] if d is not None
-]
 
 
 def base_parser(description, bucket_required=True):
@@ -152,41 +114,7 @@ def run(func):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Skill 扫描（共享逻辑，供 build_skill_index.py / benchmark.py 等复用）
 # ══════════════════════════════════════════════════════════════════════
-
-def parse_skill_md(path: str) -> dict | None:
-    """解析 SKILL.md，返回 {name, description, path}，失败返回 None"""
-    try:
-        with open(path, encoding="utf-8") as f:
-            content = f.read()
-    except OSError:
-        return None
-
-    # 提取 YAML frontmatter（--- ... ---）
-    m = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
-    if not m:
-        return None
-
-    fm_text = m.group(1)
-
-    # 优先用 pyyaml（更健壮），fallback 到正则 (#6)
-    try:
-        import yaml
-        parsed = yaml.safe_load(fm_text)
-        if isinstance(parsed, dict):
-            name = str(parsed.get("name", "")).strip()
-            description = str(parsed.get("description", "")).strip()
-            if name and description:
-                return {"name": name, "description": description, "path": path}
-    except ImportError:
-        pass  # pyyaml 未安装，fallback
-    except Exception:
-        pass  # YAML 解析失败，fallback
-
-    # fallback: 正则解析
-    return _parse_skill_md_regex(fm_text, path)
-
 
 def _parse_skill_md_regex(fm: str, path: str) -> dict | None:
     """正则 fallback 解析 SKILL.md frontmatter"""
@@ -227,28 +155,3 @@ def _parse_skill_md_regex(fm: str, path: str) -> dict | None:
     return {"name": name, "description": description, "path": path}
 
 
-def find_skills(skill_dirs: list[str] | None = None) -> list[dict]:
-    """递归扫描目录，收集所有有效 SKILL.md"""
-    dirs = skill_dirs or DEFAULT_SKILL_DIRS
-    skills = []
-    seen_names = set()
-
-    for base_dir in dirs:
-        base_dir = os.path.expanduser(base_dir)
-        if not os.path.isdir(base_dir):
-            continue
-        for root, subdirs, files in os.walk(base_dir):
-            subdirs[:] = [d for d in subdirs if not d.startswith(".") and d != "node_modules"]
-            if "SKILL.md" in files:
-                skill_path = os.path.join(root, "SKILL.md")
-                skill = parse_skill_md(skill_path)
-                if skill and skill["name"] not in seen_names:
-                    skills.append(skill)
-                    seen_names.add(skill["name"])
-
-    return skills
-
-
-def desc_hash(description: str) -> str:
-    """生成 description 的 MD5 hash，用于增量构建对比"""
-    return hashlib.md5(description.encode()).hexdigest()

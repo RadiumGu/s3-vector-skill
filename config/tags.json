@@ -1,0 +1,99 @@
+{
+  "tags": {
+    "life": {
+      "label": "生活",
+      "keywords": [
+        "生活",
+        "旅游",
+        "美食",
+        "购物",
+        "健康",
+        "日常",
+        "家"
+      ],
+      "description": "生活日常、旅游攻略、个人笔记"
+    },
+    "ops": {
+      "label": "运维",
+      "keywords": [
+        "运维",
+        "故障",
+        "排查",
+        "RCA",
+        "报警",
+        "监控",
+        "incident",
+        "oncall"
+      ],
+      "description": "运维手册、故障排查、RCA 报告"
+    },
+    "财经": {
+      "label": "财经",
+      "keywords": [
+        "股票",
+        "基金",
+        "投资",
+        "理财",
+        "财报",
+        "ETF",
+        "期货",
+        "债券",
+        "财经"
+      ],
+      "description": "股票、基金等财经相关"
+    },
+    "编程": {
+      "label": "编程",
+      "keywords": [
+        "编程",
+        "代码",
+        "Python",
+        "Java",
+        "Go",
+        "TypeScript",
+        "前端",
+        "后端",
+        "API",
+        "框架",
+        "开发"
+      ],
+      "description": "编程开发相关"
+    },
+    "AI": {
+      "label": "AI",
+      "keywords": [
+        "AI",
+        "人工智能",
+        "大模型",
+        "LLM",
+        "机器学习",
+        "深度学习",
+        "Bedrock",
+        "GPT",
+        "Claude",
+        "embedding",
+        "RAG",
+        "Agent"
+      ],
+      "description": "AI、大模型相关"
+    },
+    "mm": {
+      "label": "迁移和现代化",
+      "keywords": [
+        "迁移",
+        "现代化",
+        "Migration",
+        "Modernization",
+        "上云",
+        "重构",
+        "容器化",
+        "EKS",
+        "微服务",
+        "云原生"
+      ],
+      "description": "迁移和应用现代化相关"
+    }
+  },
+  "default_tag": null,
+  "allow_custom": false
+}

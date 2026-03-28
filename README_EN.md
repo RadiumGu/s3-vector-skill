@@ -1,30 +1,23 @@
-# Amazon S3 Vector Bucket Management Skill
+# Amazon S3 Vectors Knowledge Base Skill
 
 > [中文](README.md) | **English**
 
-> Full lifecycle management OpenClaw Skill for Amazon S3 Vectors, covering vector buckets, indexes, and vector data with **16 core capabilities**.
+> A lightweight knowledge base built on Amazon S3 Vectors, providing OpenClaw Agents with a complete "store docs → search knowledge" RAG pipeline.
 >
-> Based on Amazon S3 Vectors (re:Invent 2025 GA), reducing costs by **90%** compared to traditional vector databases.
->
-> With OpenClaw Skill Router integration, Skill injection Tokens drop by **~91%** at session start (`agent:bootstrap`), reducing overall LLM bill by **~36%** (measured in Tokyo Region).
-> Once OpenClaw's `message:received` Hook supports blocking context injection ([#8807](https://github.com/openclaw/openclaw/issues/8807)), routing will apply to every turn, significantly increasing overall savings.
-
-> ℹ️ **When to use**: The Skill Router is most useful with **30+ Skills**. Below that, OpenClaw's full injection works fine — no extra setup needed.
+> S3 Vectors (GA at re:Invent 2025) + Bedrock Titan v2 Embedding — **90% cheaper** than traditional vector databases, **4 orders of magnitude cheaper** than Bedrock Knowledge Bases.
 
 ---
 
-## ✨ Feature Overview
+## ✨ Features
 
-| Category | Capabilities |
-|----------|-------------|
-| **Vector Bucket Management** | Create, delete, query, list vector buckets |
-| **Bucket Policy Management** | Set, get, delete bucket policies |
-| **Index Management** | Create, query, list, delete vector indexes |
-| **Vector Data Operations** | Put/update, get, list, delete vectors |
-| **Similarity Search** | Top-K semantic search with metadata filtering |
-| **Skill Router (Cost Optimizer)** | Offline indexing + online routing + Hook, overall LLM bill reduction **~36%** |
-
-> 📖 Full CLI reference → [references/cli-reference.md](references/cli-reference.md)
+| Category | Capability | Script |
+|----------|-----------|--------|
+| **Document Ingestion** | Auto-chunking + embedding + write | `ingest.py` |
+| **Semantic Search** | Natural language query with source citations | `search.py` |
+| **KB Status** | Doc count, chunk count, tag distribution | `stats.py` |
+| **Tag Management** | CRUD tags, supports CJK characters | `manage_tags.py` |
+| **Vector CRUD** | 16 core operations (bucket/index/vector/policy) | See below |
+| **Deep Read Mode** | LLM context prefix, +35-49% recall | `ingest.py --contextual` |
 
 ---
 
@@ -32,407 +25,195 @@
 
 ### Prerequisites
 
-| Dependency | Requirement | Notes |
-|-----------|-------------|-------|
-| **OpenClaw** | >= 2026.3.11 | Required when used as an OpenClaw Skill |
-| **Node.js** | >= 18.0.0 | OpenClaw runtime dependency |
-| **Python** | >= 3.10 | Script runtime |
-| **boto3** | Latest | AWS Python SDK |
-| **AWS Account** | Bedrock + S3 | S3 Vectors and Bedrock access must be enabled |
-| **AWS Credentials** | IAM Role / AWS CLI | Use IAM Role on EC2/EKS, `aws configure` locally |
-
-> ⚠️ **Bedrock Model Access**: The Skill Router depends on `amazon.titan-embed-text-v2:0`. You must manually enable it in AWS Console → Bedrock → Model access.
+| Dependency | Requirement |
+|-----------|-------------|
+| Python | >= 3.10 |
+| boto3 | Latest (must support s3vectors) |
+| AWS Permissions | `s3vectors:*` + `bedrock:InvokeModel` |
 
 ```bash
 pip3 install boto3 --upgrade
 ```
 
-### Credentials
-
-Three authentication methods supported (in order of priority):
-
-**Method 1: Instance IAM Role (Recommended, auto-applies on EC2/EKS)**
-
-Attach an IAM Role with `s3vectors:*` permissions — no additional configuration needed.
-
-**Method 2: Environment Variables**
+### Initialize Knowledge Base
 
 ```bash
-export AWS_ACCESS_KEY_ID="AKIA..."
-export AWS_SECRET_ACCESS_KEY="..."
-export AWS_DEFAULT_REGION="ap-northeast-1"
+# One-click setup
+./install.sh --bucket openclaw-kb --index docs-v1
+
+# Or manually
+python3 scripts/create_vector_bucket.py --bucket openclaw-kb
+python3 scripts/create_index.py --bucket openclaw-kb --index docs-v1 --dimension 1024
 ```
 
-**Method 3: AWS Profile**
+### Store Documents
 
 ```bash
-aws configure --profile my-profile
-# Use --profile my-profile in scripts
+# Single file
+python3 scripts/ingest.py --bucket openclaw-kb --file /path/to/doc.md --tags "work"
+
+# Batch directory
+python3 scripts/ingest.py --bucket openclaw-kb --dir /path/to/docs/ --glob "*.md" --sync
+
+# Important docs — deep read mode (LLM context prefix)
+python3 scripts/ingest.py --bucket openclaw-kb --file important.md --contextual
 ```
 
-### One-Click Deployment (Recommended)
+### Search Knowledge
 
 ```bash
-git clone https://github.com/RadiumGu/s3-vector-skill.git
-cd s3-vector-skill
+# Semantic search
+python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod scheduling failure" --top-k 5
 
-./install.sh --bucket my-skill-router --yes
+# Markdown output (Agent-friendly)
+python3 scripts/search.py --bucket openclaw-kb --query "EKS Pod scheduling failure" --output markdown
+
+# Filter by tag
+python3 scripts/search.py --bucket openclaw-kb --query "..." --filter '{"tags": {"$eq": "work"}}'
 ```
 
-`install.sh` automates 5 steps: Prerequisites check → Skill index build (with `--sync`) → Hook installation → Environment variable injection (Linux systemd / macOS launchd) → Gateway restart. First deployment takes ~3 minutes.
+### Manage Knowledge Base
 
 ```bash
-# Parameters
-./install.sh --bucket <name>           # Vector bucket name (required)
-             --prefix skills          # Index prefix (default: skills)
-             --region ap-northeast-1  # S3 Vectors Region
-             --embed-region us-east-1 # Bedrock Region (if different)
-             --yes / -y               # Skip confirmation prompts
-             --skip-build             # Skip indexing (if index already exists)
-```
+# Status
+python3 scripts/stats.py --bucket openclaw-kb --output markdown
 
-### Manual Skill Installation (Without Router)
+# Tag management (supports CJK)
+python3 scripts/manage_tags.py --list
+python3 scripts/manage_tags.py --add "architecture" --label "Architecture" --keywords "architecture,design,resilience"
+python3 scripts/manage_tags.py --remove "architecture"
 
-For vector bucket management only, without Skill routing:
+# Delete document
+python3 scripts/ingest.py --bucket openclaw-kb --delete --doc-id "old-document"
 
-```bash
-# Copy to OpenClaw workspace
-cp -r s3-vector-skill ~/.openclaw/workspace-<agent>/skills/s3-vector-bucket
-
-# Or Git submodule (recommended for teams)
-git submodule add https://github.com/RadiumGu/s3-vector-skill .openclaw/skills/s3-vector-bucket
-```
-
-After installation, use natural language in OpenClaw to trigger actions:
-
-| You say | AI executes |
-|---------|------------|
-| "Create an S3 vector bucket" | Calls `create_vector_bucket.py` |
-| "Create a 1024-dim vector index" | Calls `create_index.py` |
-| "Insert 5 test vectors" | Calls `put_vectors.py` |
-| "Search for vectors similar to this text" | Calls `query_vectors.py` |
-
-**Skill trigger keywords:**
-`vector bucket` · `vector index` · `vector search` · `S3 vector` · `S3 vectors` · `skill router` · `skill routing`
-
----
-
-## 🧭 Skill Router (Overall LLM Bill Reduction ~36%)
-
-> ℹ️ **When to use**: The Router is most useful with **30+ Skills**. Below that, OpenClaw's full injection works fine — no extra setup needed.
->
-> Overall LLM bill reduction of **~36%** (Skill injection portion drops ~91%, but Skill injection is only part of the total Token spend).
->
-> ⚠️ **Current limitation**: Savings only apply to the first turn of a session (`agent:bootstrap` phase). Subsequent messages are unaffected. Once OpenClaw supports blocking `message:received` context injection, this can extend to every turn.
-
-### How It Works
-
-OpenClaw injects all Skill descriptions into the LLM context every turn — the more Skills, the higher the cost. The Skill Router injects only the **Top-5 most relevant Skills**, ignoring the rest.
-
-```
-[Offline Indexing]
-All SKILL.md descriptions
-    → Bedrock Titan Embeddings v2 (1024-dim)
-    → S3 Vectors index
-
-[Online Routing]
-User message (future: message:received hook)
-    → Same Embedding model
-    → S3 Vectors Cosine similarity search
-    → Top-5 Skills → inject into context
-```
-
-### 💰 Cost Analysis (Tokyo ap-northeast-1, from AWS Pricing API)
-
-#### Pricing Data
-
-| Service | Billing Item | Price (Tokyo) |
-|---------|-------------|--------------|
-| Claude Sonnet 4 (global cross-region) | Input tokens | $3.00 / 1M |
-| Claude Sonnet 4 (global cross-region) | Output tokens | $15.00 / 1M |
-| Titan Text Embeddings V2 | Input tokens | $0.02 / 1M |
-| S3 Vectors Query | QueryVectors | $2.70 / 1M requests |
-| S3 Vectors Storage | Vector bucket storage | $0.066 / GB-month |
-
-#### Per-Turn Cost Impact
-
-Typical conversation (system prompt + history + output):
-
-| Cost Item | Without Router | With Router (Top-5) | Change |
-|-----------|:--------------:|:-------------------:|:------:|
-| System prompt (~1,000 tokens) | $0.0030 | $0.0030 | — |
-| **Skill injection (3,040 → 305 tokens)** | **$0.0091** | **$0.0009** | **↓ 90%** |
-| History + user message (~960 tokens) | $0.0029 | $0.0029 | — |
-| Output (~500 tokens) | $0.0075 | $0.0075 | — |
-| **Total per turn** | **$0.0225** | **$0.0143** | **↓ 36%** |
-
-> Skill injection is the only item that changes. Overall reduction is 36%, not 91%.
-
-Scaled to **1,000 turns/month**:
-
-| Cost Item | Without × 1,000 | With × 1,000 | Savings |
-|-----------|:---------------:|:------------:|:-------:|
-| System prompt | $3.00 | $3.00 | — |
-| **Skill injection** | **$9.12** | **$0.92** | **$8.20 (↓ 90%)** |
-| History + messages | $2.88 | $2.88 | — |
-| Output | $7.50 | $7.50 | — |
-| S3 routing overhead | — | $0.003 | — |
-| **Monthly total** | **$22.50** | **$14.33** | **$8.17 (↓ 36%)** |
-
-Monthly savings at scale:
-
-| Monthly turns | Without Router | With Router | Savings |
-|:------------:|:--------------:|:-----------:|:-------:|
-| 1,000 | $22.50 | $14.30 | **$8.20** |
-| 10,000 | $225 | $143 | **$82** |
-| 50,000 | $1,125 | $715 | **$410** |
-| 100,000 | $2,250 | $1,430 | **$820** |
-
-Routing infrastructure cost (S3 storage + Embedding) < $0.001/month — negligible.
-
-### Benchmark Results (61 Skills + Real Query Set)
-
-> Environment: OpenClaw general-tech agent, 61 Skills, Bedrock Titan Embeddings v2 (1024-dim), ap-northeast-1
-
-| Metric | Value |
-|--------|-------|
-| Total Skills | 61 |
-| Full injection Tokens / turn | **3,040 tokens** |
-| After routing Tokens / turn | 193 ~ 417 tokens |
-| **Average savings** | **~91%** |
-| Index build time (first run) | ~18s (61 Skills) |
-| Query latency | < 1s |
-
-#### Real Query Hit Examples
-
-| Query | Routed tokens | Savings | Top-3 Skills |
-|-------|:------------:|:-------:|-------------|
-| Check weather | 209 | 93.1% | **weather** ✅, openai-whisper, ordercli |
-| EKS Pod troubleshooting | 306 | 89.9% | **aws-eks** ✅, aws-knowledge, session-logs |
-| GitHub Issues operations | 262 | 91.4% | **gh-issues** ✅, **github** ✅, brave-web-search |
-| CloudWatch log query | 302 | 90.1% | **aws-cloudwatch** ✅, healthcheck, aws-iac |
-| Send Slack message | 193 | 93.7% | **slack** ✅, discord, imsg |
-| CDK deployment debug | 417 | 86.3% | **aws-iac** ✅, aws-knowledge, healthcheck |
-
-> Token counts are approximate estimates (Chinese ÷1.5, English ÷4). ✅ = Top-1 hit.
-
-### Manual Configuration (Advanced)
-
-> Skip this section if you used `install.sh`.
-
-#### Step 1: Build Index
-
-```bash
-# Auto-scan all OpenClaw Skill directories (incremental: only embeds changed Skills)
-python3 scripts/build_skill_index.py \
-  --bucket my-skill-router \
-  --index  skills-v1 \
-  --sync
-
-# Multi-agent parallel build (auto-scans all workspace-* directories)
-SKILL_ROUTER_BUCKET=my-skill-router ./scripts/build_all.sh
-
-# Force full rebuild (skip incremental comparison)
-python3 scripts/build_skill_index.py --bucket my-skill-router --index skills-v1 --sync --force
-
-# Dry run (preview only, no write)
-python3 scripts/build_skill_index.py --bucket x --index x --dry-run
-```
-
-> 💡 **Incremental builds**: By default, compares description hashes and only re-embeds changed/new Skills.
-> Combined with disk cache (`~/.cache/s3-vector-skill/`), routine maintenance Bedrock calls drop by 90%+,
-> build time goes from minutes to seconds.
-
-**`build_skill_index.py` parameters:**
-
-| Parameter | Required | Default | Description |
-|-----------|:--------:|---------|-------------|
-| `--bucket` | ✅ | — | S3 vector bucket name |
-| `--index` | ❌ | `skills-v1` | S3 vector index name |
-| `--skills-dir` | ❌ | OpenClaw standard paths | Skill directories to scan (multiple allowed) |
-| `--region` | ❌ | `ap-northeast-1` | S3 Vectors Region |
-| `--embed-region` | ❌ | same as `--region` | Bedrock Embedding Region |
-| `--sync` | ❌ | false | Sync mode: auto-delete stale Skill vectors |
-| `--force` | ❌ | false | Force full rebuild (skip incremental comparison) |
-| `--dry-run` | ❌ | false | Scan only, no write |
-
-#### Step 2: Online Query
-
-```bash
-# JSON output (for scripting)
-python3 scripts/skill_router.py \
-  --bucket my-skill-router \
-  --index  skills-v1 \
-  --query  "AWS EKS Pod troubleshooting" \
-  --top-k  5
-
-# Markdown output (for LLM context injection)
-python3 scripts/skill_router.py \
-  --bucket my-skill-router \
-  --index  skills-v1 \
-  --query  "Check today's weather" \
-  --output markdown
-```
-
-**`skill_router.py` parameters:**
-
-| Parameter | Required | Default | Description |
-|-----------|:--------:|---------|-------------|
-| `--bucket` | ✅ | — | S3 vector bucket name |
-| `--index` | ✅ | — | S3 vector index name |
-| `--query` | ✅ | — | User query text |
-| `--top-k` | ❌ | `5` | Number of top results |
-| `--output` | ❌ | `json` | Output format: `json` / `markdown` / `names` |
-| `--score-threshold` | ❌ | `0.3` | Similarity score filter threshold (0~1, skips filter when API returns no score) |
-| `--embed-region` | ❌ | same as `--region` | Bedrock Embedding Region |
-
-#### Step 3: Install Hook
-
-The Hook runs at `agent:bootstrap`, selects Top-5 relevant Skills, and writes them to `BOOTSTRAP.md` for LLM injection.
-
-```bash
-cp -r hooks/skill-router-hook ~/.openclaw/hooks/
-
-# Single agent
-export SKILL_ROUTER_BUCKET=openclaw-skill-router
-export SKILL_ROUTER_INDEX=skills-v1
-
-# Multi-agent (recommended): PREFIX auto-appends agent id → skills-general-tech etc.
-export SKILL_ROUTER_BUCKET=openclaw-skill-router
-export SKILL_ROUTER_INDEX_PREFIX=skills
-
-openclaw hooks enable skill-router-hook
-```
-
-**Hook environment variables:**
-
-| Variable | Required | Description |
-|----------|:--------:|-------------|
-| `SKILL_ROUTER_BUCKET` | ✅ | S3 vector bucket name |
-| `SKILL_ROUTER_INDEX_PREFIX` | Multi-agent recommended | Index prefix, auto-appends agent id |
-| `SKILL_ROUTER_INDEX` | Single agent | Fixed index name; PREFIX takes priority |
-| `SKILL_ROUTER_TOP_K` | ❌ | Top-K count (default 5) |
-| `SKILL_ROUTER_REGION` | ❌ | S3 Vectors Region (default ap-northeast-1) |
-| `SKILL_ROUTER_SCRIPT` | ❌ | Path to skill_router.py (auto-injected by install.sh; specify manually otherwise) |
-| `AWS_BEDROCK_REGION` | ❌ | Bedrock Embedding Region |
-
-### Current Limitations & Roadmap
-
-| Capability | Current | Future (after message:received context injection support) |
-|------------|---------|----------------------------------------------------------|
-| Trigger timing | `agent:bootstrap` (session start) | Before each message |
-| Context source | Recent Memory files | Real-time user message |
-| Skill injection | Write to BOOTSTRAP.md | Dynamic replacement of available_skills |
-| Token savings | Partial (first turn only) | **Full ~91% every turn** |
-
-> ⚠️ OpenClaw's `message:received` Hook is live (PR [#9387](https://github.com/openclaw/openclaw/pull/9387)),
-> but currently runs in non-blocking mode and cannot modify the system prompt.
-> Issue [#8807](https://github.com/openclaw/openclaw/issues/8807) proposes blocking context injection support,
-> which would enable full per-message dynamic routing.
-
-### 🔧 Index Maintenance
-
-| Scenario | Action |
-|----------|--------|
-| Install / update / uninstall Skill | Rebuild index (incremental, only processes changed Skills; use `--sync` for uninstall) |
-| OpenClaw upgrade | Rebuild index |
-| Modify SKILL.md name or description | Rebuild index (incremental, only re-embeds changed Skills) |
-| Routine conversation / config changes | No action needed |
-
-```bash
-# Single agent sync rebuild
-python3 scripts/build_skill_index.py --bucket my-skill-router --index skills-v1 --sync
-
-# Multi-agent full rebuild
-SKILL_ROUTER_BUCKET=my-skill-router ./scripts/build_all.sh
+# Incremental sync
+python3 scripts/ingest.py --bucket openclaw-kb --dir /docs/ --sync
 ```
 
 ---
 
-## 🏗️ Project Structure
+## 🤖 OpenClaw Agent Integration
+
+### Install to Agent
+
+```bash
+# Symlink to workspace (all configured Agents share the same KB)
+ln -s /path/to/s3-vector-skill ~/.openclaw/workspace-<NAME>/skills/s3-vector-bucket
+```
+
+### Usage
+
+No commands to remember — just talk to your Agent:
+
+| You Say | Agent Does |
+|---------|-----------|
+| "Store this link in the KB" | `web_fetch` → `ingest.py` |
+| "This is important, store it carefully" | `ingest.py --contextual` |
+| "Save to KB, work related" | `ingest.py --tags "work"` |
+| "How to troubleshoot EKS Pod scheduling?" | Search KB first → 📚 cite sources |
+| "What's in the KB?" | `stats.py` |
+| "Add an architecture tag" | `manage_tags.py --add` |
+
+### Source Citations
+
+Agents automatically label information sources:
+
+- 📚 — From knowledge base (with chunk source and similarity score)
+- 🌐 — From web search
+- 🤖 — From model's own knowledge
+
+---
+
+## 📊 Chunking Strategies
+
+| Strategy | Accuracy | Cost | Use Case |
+|----------|----------|------|----------|
+| **Recursive splitting** (default) | 69% | Free | All documents |
+| **Heading-aware** (auto for Markdown) | ~75% | Free | Markdown with headings |
+| **Contextual** (`--contextual`) | +35-49% | ~$0.0015/chunk | Important docs |
+
+- Default: 512 tokens/chunk, 64 tokens overlap (Vecta 2026 benchmark optimal)
+- Markdown files auto-detected for heading structure, preserving hierarchy path
+
+---
+
+## 🏷️ Tag System
+
+Predefined tags in `config/tags.json`, supports CJK characters:
+
+| Tag | Description |
+|-----|------------|
+| `work` | Work & technical docs |
+| `life` | Daily life |
+| `ops` | Operations, troubleshooting |
+| `learning` | Study notes |
+
+Users can add tags via conversation. Agents auto-map keywords but never invent new tags.
+
+---
+
+## 💰 Cost Estimate
+
+For 100 documents (~3000 chunks):
+
+| Mode | Cost |
+|------|------|
+| Standard | < $0.02/month |
+| Contextual | ~$4.50 one-time + $0.005/month |
+| Bedrock Knowledge Bases (comparison) | ~$175/month |
+
+---
+
+## 📁 Project Structure
 
 ```
 s3-vector-skill/
-├── README.md                              # Documentation in Chinese
-├── README_EN.md                           # Documentation in English (this file)
-├── SKILL.md                               # OpenClaw Skill definition
-├── install.sh                             # One-click deployment script
-├── scripts/                               # Executable scripts
-│   ├── common.py                          # Shared utilities
-│   ├── create_vector_bucket.py            # Create vector bucket
-│   ├── delete_vector_bucket.py            # Delete vector bucket
-│   ├── get_vector_bucket.py               # Get vector bucket info
-│   ├── list_vector_buckets.py             # List all vector buckets
-│   ├── put_vector_bucket_policy.py        # Set bucket policy
-│   ├── get_vector_bucket_policy.py        # Get bucket policy
-│   ├── delete_vector_bucket_policy.py     # Delete bucket policy
-│   ├── create_index.py                    # Create vector index
-│   ├── get_index.py                       # Get index info
-│   ├── list_indexes.py                    # List all indexes
-│   ├── delete_index.py                    # Delete vector index
-│   ├── put_vectors.py                     # Put/update vectors
-│   ├── get_vectors.py                     # Get specific vectors
-│   ├── list_vectors.py                    # List vectors
-│   ├── delete_vectors.py                  # Delete vectors
-│   ├── query_vectors.py                   # Similarity search
-│   ├── build_skill_index.py               # Skill Router: offline indexing
-│   ├── skill_router.py                    # Skill Router: online query
-│   ├── build_all.sh                       # Multi-agent parallel build
-│   ├── benchmark.py                       # Token savings benchmark
-│   ├── extract_queries.py                 # Real query set extraction
-│   └── embed.py                           # Bedrock Embedding module
-├── hooks/
-│   └── skill-router-hook/                 # OpenClaw Hook (Bootstrap injection)
+├── SKILL.md                    # OpenClaw Skill definition
+├── PRD.md                      # Product requirements
+├── README.md                   # Chinese docs
+├── README_EN.md                # English docs
+├── install.sh                  # One-click setup
+├── config/
+│   └── tags.json               # Tag configuration
+├── scripts/
+│   ├── common.py               # Shared utilities
+│   ├── embed.py                # Bedrock Titan v2 Embedding
+│   ├── chunker.py              # Document chunking (recursive + heading-aware)
+│   ├── ingest.py               # Document ingestion
+│   ├── search.py               # Semantic search
+│   ├── stats.py                # KB status
+│   ├── manage_tags.py          # Tag management
+│   ├── create_vector_bucket.py # Create vector bucket
+│   ├── delete_vector_bucket.py # Delete vector bucket
+│   ├── get_vector_bucket.py    # Describe vector bucket
+│   ├── list_vector_buckets.py  # List vector buckets
+│   ├── put_vector_bucket_policy.py
+│   ├── get_vector_bucket_policy.py
+│   ├── delete_vector_bucket_policy.py
+│   ├── create_index.py         # Create index
+│   ├── get_index.py            # Describe index
+│   ├── list_indexes.py         # List indexes
+│   ├── delete_index.py         # Delete index
+│   ├── put_vectors.py          # Put vectors
+│   ├── get_vectors.py          # Get vectors
+│   ├── list_vectors.py         # List vectors
+│   ├── delete_vectors.py       # Delete vectors
+│   └── query_vectors.py        # Similarity search
 └── references/
-    ├── api_reference.md                   # S3 Vectors API reference
-    └── cli-reference.md                   # Full CLI command reference
+    ├── api_reference.md        # S3 Vectors API reference
+    └── cli-reference.md        # CLI command reference
 ```
 
 ---
 
-## ❓ FAQ
+## Technical Details
 
-**Q: How to verify credentials are valid?**
-```bash
-aws sts get-caller-identity
-```
-
-**Q: How to confirm S3 Vectors is available in the current Region?**
-```bash
-aws s3vectors list-vector-buckets --region ap-northeast-1
-```
-An empty list means available; `Could not connect to endpoint` means the Region is not yet supported.
-
-**Q: How to troubleshoot failed API calls?**
-1. Check IAM Role / credentials have `s3vectors:*` permissions
-2. Verify the Region supports S3 Vectors
-3. Ensure the bucket name contains only lowercase letters, numbers, and hyphens
-4. Use the `error_code` and `request_id` from the response to search AWS CloudTrail
-
-**Q: Which Regions are supported?**
-
-| Region | Name |
-|--------|------|
-| `us-east-1` | US East (N. Virginia) |
-| `us-west-2` | US West (Oregon) |
-| `eu-west-1` | Europe (Ireland) |
-| `ap-northeast-1` | Asia Pacific (Tokyo) ✅ Default |
-| `ap-southeast-1` | Asia Pacific (Singapore) |
-
----
-
-## 📚 References
-
-- [Amazon S3 Vectors Product Page](https://aws.amazon.com/s3/features/vectors/)
-- [S3 Vectors GA Launch Blog](https://aws.amazon.com/blogs/aws/amazon-s3-vectors-now-generally-available-with-increased-scale-and-performance/)
-- [boto3 s3vectors API Docs](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3vectors.html)
-- [Amazon Bedrock Titan Embeddings v2](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)
-- [re:Invent 2025 STG318 Session](https://www.youtube.com/watch?v=ghUW2SpEYPk)
-- [OpenClaw Website](https://openclaw.ai/)
-- [ClawHub Skill Marketplace](https://clawhub.com/)
-
----
-
-## 📄 License
-
-MIT
+| Item | Details |
+|------|---------|
+| Embedding Model | Amazon Titan Text Embedding v2 (1024d) |
+| Distance Metric | cosine (recommended for RAG) |
+| Index Limit | 2B vectors per index, query latency < 100ms |
+| Metadata Limit | 2048 bytes (UTF-8) per vector |
+| Supported Formats | Markdown, plain text, HTML |
+| Incremental Sync | Content hash comparison, only updates changes |
+| Supported Regions | us-east-1, us-west-2, eu-west-1, ap-northeast-1, etc. |
