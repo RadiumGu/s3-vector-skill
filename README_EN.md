@@ -336,7 +336,6 @@ Agent C ──┘                               └─ scripts/*.py
 ```
 s3-vector-skill/
 ├── SKILL.md                    # OpenClaw Skill definition
-├── PRD.md                      # Product requirements (not pushed to GitHub)
 ├── README.md                   # Chinese docs
 ├── README_EN.md                # English docs (this file)
 ├── install.sh                  # One-click setup (create bucket + index)
@@ -381,6 +380,8 @@ s3-vector-skill/
 | Distance Metric | cosine (recommended for RAG) |
 | Index Limit | 2B vectors per index, query latency < 100ms |
 | Metadata Limit | 2048 bytes (UTF-8) per vector |
+| Operation Limits | TopK 1-100, batch ≤500, embedding ≤8000 chars |
+| Index Dimension Check | Auto-validated on ingest startup, mismatch fails fast |
 | Supported Formats | Markdown, plain text, HTML |
 | Incremental Sync | Content hash (MD5) comparison, only updates changes |
 | Tag Naming | Supports CJK, English, digits, hyphens |

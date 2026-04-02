@@ -131,7 +131,7 @@ python3 scripts/stats.py --bucket openclaw-kb --output markdown
 **命令行方式：**
 ```bash
 # 单文件
-python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --tags "work"
+python3 scripts/ingest.py --bucket openclaw-kb --file doc.md --tags "work" --author "大乖乖"
 
 # 目录批量导入
 python3 scripts/ingest.py --bucket openclaw-kb --dir /path/to/docs/ --glob "*.md"
@@ -342,7 +342,6 @@ Agent C ──┘                               └─ scripts/*.py
 ```
 s3-vector-skill/
 ├── SKILL.md                    # OpenClaw Skill 定义（Agent 读取）
-├── PRD.md                      # 产品需求文档（不推送到 GitHub）
 ├── README.md                   # 中文文档（本文件）
 ├── README_EN.md                # English docs
 ├── install.sh                  # 一键初始化（创建桶 + 索引）
@@ -387,6 +386,8 @@ s3-vector-skill/
 | 向量距离 | cosine（推荐 RAG） |
 | 单索引上限 | 20 亿向量，查询延迟 < 100ms |
 | Metadata 限制 | 2048 bytes（UTF-8）per vector |
+| 操作限制 | TopK 1-100，批量 ≤500，embedding ≤8000 字符 |
+| 索引维度校验 | ingest 启动时自动校验，维度不匹配直接报错 |
 | 支持文档格式 | Markdown、纯文本、HTML |
 | 增量同步 | content hash（MD5）对比，只更新变更 |
 | Tag 命名 | 支持中文、英文、数字、连字符 |
