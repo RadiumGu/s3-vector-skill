@@ -88,6 +88,20 @@ def handle_error(e):
             if error_code in ("ThrottlingException", "Throttling", "TooManyRequestsException"):
                 message = f"请求被限流: {message}。建议：稍后重试或降低并发。"
 
+            if error_code == "IndexNotFoundException":
+                message = (
+                    f"索引不存在: {message}\n"
+                    f"请先创建索引：python3 create_index.py --bucket <桶名> --index <索引名> --dimension 1024\n"
+                    f"或检查索引名是否拼写正确：python3 list_indexes.py --bucket <桶名>"
+                )
+
+            if error_code == "VectorBucketNotFoundException":
+                message = (
+                    f"向量桶不存在: {message}\n"
+                    f"请先创建向量桶：python3 create_vector_bucket.py --bucket <桶名>\n"
+                    f"或检查桶名是否拼写正确：python3 list_vector_buckets.py"
+                )
+
             print(json.dumps({
                 "success": False,
                 "error": f"服务端错误: {message}",

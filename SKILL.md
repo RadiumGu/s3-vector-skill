@@ -98,7 +98,7 @@ python3 {baseDir}/scripts/manage_tags.py --reclassify --doc-id DOC_ID --new-tag 
 ```bash
 # 单文件
 python3 {baseDir}/scripts/ingest.py --bucket openclaw-kb --index docs-v1 \
-  --file /path/to/doc.md [--source "https://..."] [--tags "eks,k8s"]
+  --file /path/to/doc.md [--source "https://..."] [--tags "eks,k8s"] [--author "大乖乖"]
 
 # 目录批量
 python3 {baseDir}/scripts/ingest.py --bucket openclaw-kb --index docs-v1 \
@@ -170,3 +170,14 @@ python3 {baseDir}/scripts/create_index.py --bucket openclaw-kb --index docs-v1 -
 | `--bucket` | ✅ | 向量桶名称 |
 | `--region` | ❌ | AWS Region，默认 `ap-northeast-1` |
 | `--profile` | ❌ | AWS CLI Profile |
+
+## 操作限制
+
+| 参数 | 限制 | 说明 |
+|------|------|------|
+| `--top-k` | 1-100 | S3 Vectors 单次查询最大返回 100 条 |
+| 单次批量写入 | ≤ 500 条向量 | 超过时自动分批（ingest.py 已处理） |
+| 单文本 embedding | ≤ 8000 字符 | Titan v2 上限 8192 tokens，截断到 8000 |
+| metadata 过滤字段 | ≤ 2048 bytes (UTF-8) | S3 Vectors filterable metadata 硬限制 |
+| chunk_size | 推荐 512 tokens | 基于 Vecta 2026 benchmark 最优区间 |
+| 索引维度 | 1024 | 当前使用 Titan Embed v2，切换模型需重建索引 |

@@ -35,7 +35,29 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import base_parser, create_client, success_output, fail, run, handle_error
 from chunker import chunk_text, count_tokens
-from embed import embed_text
+from embed import embed_text, EMBED_DIMENSION
+
+# ── 索引维度校验 ──────────────────────────────────────────────────────
+def _validate_index_dimension(client, bucket: str, index: str, expected_dim: int) -> None:
+    """校验索引维度与当前 embedding 模型匹配"""
+    try:
+        resp = client.get_index(vectorBucketName=bucket, indexName=index)
+        index_dim = resp.get("index", {}).get("dimension", 0)
+        if index_dim and index_dim != expected_dim:
+            fail(
+                f"维度不匹配！索引 '{index}' 维度={index_dim}，"
+                f"当前 embedding 模型维度={expected_dim}。\n"
+                f"解决方案：\n"
+                f"  1. 删除旧索引并重建: python3 delete_index.py --bucket {bucket} --index {index}\n"
+                f"     然后: python3 create_index.py --bucket {bucket} --index {index} --dimension {expected_dim}\n"
+                f"  2. 或切换回匹配的 embedding 模型"
+            )
+    except SystemExit:
+        raise
+    except Exception as e:
+        import logging
+        logging.warning(f"索引维度校验跳过: {e}")
+
 
 # ── HTML 支持 ─────────────────────────────────────────────────────────
 def extract_html_text(html: str) -> str:
@@ -114,7 +136,8 @@ def content_hash(text: str) -> str:
 # ── 写入 S3 Vectors ──────────────────────────────────────────────────
 def put_chunks(client, bucket: str, index: str, doc_id: str, chunks,
                source: str, tags: str, file_type: str, full_text: str,
-               contextual: bool, contextual_model: str, region: str, profile=None):
+               contextual: bool, contextual_model: str, region: str,
+               profile=None, author: str = ""):
     """将 chunks 生成 embedding 并写入 S3 Vectors"""
     vectors = []
     total = len(chunks)
@@ -149,6 +172,8 @@ def put_chunks(client, bucket: str, index: str, doc_id: str, chunks,
             metadata["source"] = source[:200]
         if tags:
             metadata["tags"] = tags[:100]
+        if author:
+            metadata["author"] = author[:100]
         if chunk.heading_path:
             metadata["heading_path"] = chunk.heading_path[:150]
         if ctx_prefix:
@@ -278,11 +303,16 @@ def main():
                         help="Contextual prefix 使用的 LLM")
     parser.add_argument("--sync", action="store_true", help="增量同步模式")
     parser.add_argument("--delete", action="store_true", help="删除指定 doc-id 的所有 chunk")
+    parser.add_argument("--author", default="", help="文档作者（写入 metadata，可用于过滤）")
     parser.add_argument("--dry-run", action="store_true", help="只输出计划，不执行")
     args = parser.parse_args()
 
     client = create_client(args)
     embed_region = getattr(args, "embed_region", None) or args.region
+
+    # 启动校验：索引维度与 embedding 模型匹配
+    if not args.delete:
+        _validate_index_dimension(client, args.bucket, args.index, EMBED_DIMENSION)
 
     # 删除模式
     if args.delete:
@@ -327,7 +357,7 @@ def main():
         count = put_chunks(client, args.bucket, args.index, doc_id, chunks,
                            args.source or "stdin", args.tags or "", "txt", text,
                            args.contextual, args.contextual_model, embed_region,
-                           getattr(args, "profile", None))
+                           getattr(args, "profile", None), author=args.author)
         success_output("ingest", doc_id=doc_id, chunks_written=count)
         return
 
@@ -387,7 +417,7 @@ def main():
         count = put_chunks(client, args.bucket, args.index, doc_id, chunks,
                            args.source or fpath, args.tags or "", ext, text,
                            args.contextual, args.contextual_model, embed_region,
-                           getattr(args, "profile", None))
+                           getattr(args, "profile", None), author=args.author)
         results["ingested"] += 1
         results["chunks_written"] += count
         results["files"].append({"file": fpath, "doc_id": doc_id, "chunks": count})
